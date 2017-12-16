@@ -21,7 +21,6 @@ def sort_and_pack(tensor, lengths):
     packed_seq = torch.nn.utils.rnn.pack_padded_sequence(sorted_inputs, sorted_len.cpu().data.numpy(), batch_first=True)
     return packed_seq, sorted_idx
 
-
 def unpack_and_unsort(packed, sorted_idx):
     unpacked, unpacked_len = torch.nn.utils.rnn.pad_packed_sequence(packed, batch_first=True)
     # unsort the output
@@ -310,7 +309,7 @@ class SpeechSegmentor(nn.Module):
             if self.is_cuda:
                 current_scores = current_scores.cuda()
 
-            MAX_SEGMENT_SIZE = 200
+            MAX_SEGMENT_SIZE = 100
             start_index = max(0, i-MAX_SEGMENT_SIZE)
             for j in range(start_index, i):
                 current_scores[:, j] = best_scores[:, j] + self.get_local_score(batch, j, i)[:, 0].data

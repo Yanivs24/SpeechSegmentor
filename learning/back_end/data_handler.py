@@ -13,6 +13,9 @@ WAV_PREFIX     = 'sw0'
 MARK_EXTENSION = 'mrk'
 MARK_PREFIX    = 'sw'
 
+# Max allowed size of swith-board speech utterance (in seconds)
+SB_MAX_EXAMPLE_SIZE = 100
+
 PREASPIRATION_NUM_OF_FEATURES = 8
 
 def load_switchboard(wav_path, trans_path, features_type, sample_rate, win_size, run_over=False, **kwargs):
@@ -34,19 +37,22 @@ def load_switchboard(wav_path, trans_path, features_type, sample_rate, win_size,
 
     # Loop over the files and extract features and labels (segmentations) from them
     file_ids = get_annotated_ids(wav_path, trans_path)
-    print 'Constructing dataset..'
+    print 'Constructing dataset from %s files..' % str(len(file_ids))
     dataset = []
     for file_id in file_ids:
         wav_file_path  = os.path.join(wav_path, '{0}{1}.{2}'.format(WAV_PREFIX, file_id, WAV_EXTENSION))
         mark_file_path = os.path.join(trans_path, '{0}{1}.{2}'.format(MARK_PREFIX, file_id, MARK_EXTENSION))
 
+        snippets = switchboard_extract_segmentation(mark_file_path, win_size)
         features = extractor(wav_file_path, sample_rate, win_size, **kwargs)
-        seg = switchboard_extract_segmentation(mark_file_path, win_size)
 
         # Convert the features into torch tensor
         features = torch.FloatTensor(features.transpose())
 
-        dataset.append((features, seg))
+        # We have the whole wav-file features and we crop it for each snippet 
+        for boundaries, seg in snippets:
+            snippet_features = features[boundaries[0]: boundaries[1]+1, :]
+            dataset.append((snippet_features, seg))
 
     # Save the dataset for later use
     print 'Constructed dataset of %s examples.' % str(len(dataset))
@@ -68,38 +74,84 @@ def switchboard_extract_segmentation(mark_file_path, win_size):
     with open(mark_file_path) as f:
         lines = f.readlines()
 
-    # Split each line to its fields - ignore non-word marks (with *) and empty lines
-    lines = [line.split() for line in lines if '*' not in line.split() and len(line) > 1]
+    # Split each line to its fields
+    lines_fields = []
+    for line in lines:
+        fields = line.split()
+        # ignore if there are not enough fields
+        if len(fields) < 4:
+            continue
+        # ignore non-speech marks
+        if '*' in fields:
+            continue
 
-    # Loop over the transcript and search for speaker turn-changes
-    segmentation = [0]
+        # I encountered lines that start with '*' or '@' - strip them
+        fields[0] = fields[0].strip('*@')
+
+        lines_fields.append(fields)
+
+    # Build a list of examples extracted from this file, each one represents a 
+    # snippet from the wav file and built from:
+    #   1) The start-index and end-index of this snippet 
+    #   2) Sequence of indexes - the segmentation
+    # NOTE: all the indexes / segmentations are relative to win_size
+    snippets = []
+    current_segmentation = [0]
     prev_speaker = ''
-    prev_speaker_end_time = 0
-    for i,line in enumerate(lines):
+    prev_speaker_end_time = None
+    snippet_start_time = 0
+    new_snippet = True
+    # Loop over the transcript and search for speaker turn-changes
+    for i,fields in enumerate(lines_fields):
+
+        # We work relatively to the current snippet's start time
+        if new_snippet:
+            new_snippet = False
+            snippet_start_time = float(fields[1])
+
+        speaker_start_time = float(fields[1]) - snippet_start_time
+        speaker_end_time   = speaker_start_time + float(fields[2])
+
         # The first letter of the first field is the speaker (A or B)
-        speaker = line[0].strip('@')[0]
+        speaker = fields[0][0]
         if speaker not in ('A', 'B'):
             raise ValueError("Found illegal speaker in the file: %s" % mark_file_path)
-
-        speaker_start_time = float(line[1])
 
         # If the margin is more than 250ms - consider it as a non-speech segment
         # TODO: add segment type for diarization
         # if (speaker_start_time - prev_speaker_end_time) > 0.25:
-        #     segmentation.append(int(prev_speaker_end_time*1e3/win_size))
-        #     segmentation.append(int(speaker_start_time*1e3/win_size))
+        #     current_segmentation.append(int(prev_speaker_end_time*1e3/win_size))
+        #     current_segmentation.append(int(speaker_start_time*1e3/win_size))
 
         # If this line contains a new speaker - and the mergin between their speech time
         # is not big - use the median of the times as the turn-change time
-        if i > 0 and prev_speaker != speaker:
+        if prev_speaker and prev_speaker != speaker:
             median_time = 0.5 * (prev_speaker_end_time + speaker_start_time)
-            segmentation.append(int(median_time*1e3/win_size))
+            current_segmentation.append(int(median_time*1e3/win_size))
             # TODO: add speaker for diarization
 
-        prev_speaker = speaker
-        prev_speaker_end_time = float(line[1]) + float(line[2])
+        # Finish this example/snippet (and start a new one if it's not the last line)
+        if (speaker_end_time >= SB_MAX_EXAMPLE_SIZE) or (i == len(lines_fields)-1):
 
-    return segmentation
+            # Add the relative end-index of the last speaker to this segmentation
+            current_segmentation.append(int(speaker_end_time*1e3/win_size))
+
+            # Get snippet absolute time-indexes and add the snippet
+            snippet_start_index = int(snippet_start_time*1e3/win_size)
+            snippet_end_index   = int((snippet_start_time+speaker_end_time)*1e3/win_size)
+            snippets.append(((snippet_start_index, snippet_end_index),
+                            current_segmentation[:]))
+
+            # Start a new snippet
+            new_snippet = True
+            current_segmentation = [0]
+            speaker = ''
+            prev_speaker_end_time = 0
+
+        prev_speaker          = speaker
+        prev_speaker_end_time = speaker_end_time
+
+    return snippets
 
 def get_annotated_ids(wav_path, trans_path):
 

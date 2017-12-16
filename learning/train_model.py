@@ -184,7 +184,7 @@ if __name__ == '__main__':
     parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy", default='sb')
     parser.add_argument('--learning_rate', help='The learning rate', default=0.001, type=float)
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
-    parser.add_argument('--batch_size', help='Size of training batch', default=10, type=int)
+    parser.add_argument('--batch_size', help='Size of training batch', default=5, type=int)
     parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=10, type=int)
     parser.add_argument('--no-cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     args = parser.parse_args()
@@ -198,12 +198,12 @@ if __name__ == '__main__':
     
     if args.dataset == 'sb':
         print '==> Using switchboard dataset'
-        dataset = switchboard_dataset('data/swbI_release2/CD1/data/',
-                                      'data/swbI_release2/CD1/trans/',
-                                      'mfcc',
-                                      16000, 
-                                      1000,
-                                      run_over=True)
+        dataset = switchboard_dataset(wav_path='data/swbI_release2/audio/',
+                                      trans_path='data/swbI_release2/trans/',
+                                      feature_type='mfcc',
+                                      sample_rate=16000, 
+                                      win_size=1000, # In ms
+                                      run_over=False)
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'
         dataset = preaspiration_dataset(args.train_path)
@@ -212,9 +212,8 @@ if __name__ == '__main__':
         print '==> Using toy dataset'
         dataset = toy_dataset(dataset_size=4000, seq_len=100)
     else:
-        raise ValueError("%s - illegal dataset name" % args.dataset)
+        raise ValueError("%s - illegal dataset" % args.dataset)
 
-    
     # split the dataset into training set and validation set
     train_set_size = int((1-DEV_SET_PROPORTION) * len(dataset))
     train_data = dataset[:train_set_size]
