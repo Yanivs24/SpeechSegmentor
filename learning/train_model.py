@@ -202,7 +202,7 @@ if __name__ == '__main__':
                                       trans_path='data/swbI_release2/trans/',
                                       feature_type='mfcc',
                                       sample_rate=16000, 
-                                      win_size=1000, # In ms
+                                      win_size=100, # In ms
                                       run_over=False)
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'

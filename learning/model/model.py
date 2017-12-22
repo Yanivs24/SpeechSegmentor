@@ -9,7 +9,8 @@ import numpy as np
 import time
 import random
 
-
+# Max length of segment - in indexes
+MAX_SEGMENT_SIZE = 100
 DEFAULT_FEATURE_SIZE = 20
 
 
@@ -273,11 +274,13 @@ class SpeechSegmentor(nn.Module):
         programming algorithm.
 
         Parameters:
-            batch :  A 3D torch tensor: (batch_size, sequence_size, input_size)
-            lengths: A 1D tensor containing the lengths of the batch sequences
+            batch :     A 3D torch tensor: (batch_size, sequence_size, input_size)
+            lengths:    A 1D tensor containing the lengths of the batch sequences
             [gold_seg]: A python list containing batch_size lists with the gold
-                        segmentations. If given, we use the structural hinge loss
-                        with margin.
+                        segmentations. If given, we will return the best segmentation
+                        excluding the gold one, for the structural hinge loss with 
+                        margin algorithm (see Kiperwasser, Eliyahu, and Yoav Goldberg
+                        "Simple and accurate dependency parsing using bidirectional LSTM feature representations).
 
         Notes:
             The algorithm complexity is O(n**2)
@@ -302,21 +305,19 @@ class SpeechSegmentor(nn.Module):
 
         # Note: We don't use torch variables during the following dynamic programming
         # algorithm since we don't want to affect the computation graph
-        # TODO: limit this loop by min/max segment length
         for i in range(1, max_length):
             # Get scores of subsequences of seq[:i] that ends with i
-            current_scores = torch.zeros(batch_size, i)
+            current_scores = torch.zeros(batch_size, min(i, MAX_SEGMENT_SIZE))
             if self.is_cuda:
                 current_scores = current_scores.cuda()
 
-            MAX_SEGMENT_SIZE = 100
             start_index = max(0, i-MAX_SEGMENT_SIZE)
             for j in range(start_index, i):
-                current_scores[:, j] = best_scores[:, j] + self.get_local_score(batch, j, i)[:, 0].data
+                current_scores[:, j-start_index] = best_scores[:, j] + self.get_local_score(batch, j, i)[:, 0].data
         
             # Choose the best scores and their corresponding indexes
             max_scores, k = torch.max(current_scores, 1)
-            k = k.cpu().numpy() # Convert indexes to numpy
+            k =  start_index + k.cpu().numpy() # Convert indexes to numpy (relative to the starting index)
 
             # Add current best score and best segmentation
             best_scores[:, i] = max_scores            

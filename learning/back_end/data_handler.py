@@ -15,6 +15,7 @@ MARK_PREFIX    = 'sw'
 
 # Max allowed size of swith-board speech utterance (in seconds)
 SB_MAX_EXAMPLE_SIZE = 100
+SB_MIN_EXAMPLE_SIZE = 50
 
 PREASPIRATION_NUM_OF_FEATURES = 8
 
@@ -27,7 +28,7 @@ def load_switchboard(wav_path, trans_path, features_type, sample_rate, win_size,
 
     # Check if the dataset already exists
     if not run_over and os.path.exists(dataset_path):
-        print 'Loading switchboasrd processesd dataset from %s' % dataset_path
+        print 'Loading switchboard processesd dataset from %s' % dataset_path
         return load_dataset_from_file(dataset_path)
 
     # Get feature extractor
@@ -132,6 +133,10 @@ def switchboard_extract_segmentation(mark_file_path, win_size):
 
         # Finish this example/snippet (and start a new one if it's not the last line)
         if (speaker_end_time >= SB_MAX_EXAMPLE_SIZE) or (i == len(lines_fields)-1):
+
+            # If the new snippet is too short - finish here
+            if speaker_end_time < SB_MIN_EXAMPLE_SIZE:
+                break
 
             # Add the relative end-index of the last speaker to this segmentation
             current_segmentation.append(int(speaker_end_time*1e3/win_size))
