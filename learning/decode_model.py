@@ -1,11 +1,5 @@
 #!/usr/bin/python
 
-# This file is part of BiRNN_AutoPA - automatic extraction of pre-aspiration 
-# from speech segments in audio files.
-#
-# Copyright (c) 2017 Yaniv Sheena
-
-
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
@@ -15,12 +9,7 @@ from torch.autograd import Variable
 import torch
 
 from model.model import SpeechSegmentor
-
-FILE_WITH_FEATURE_FILE_LIST = 'feature_names.txt'
-FILE_WITH_LABELS            = 'labels.txt'
-FIRST_FEATURE_INDEX = 1
-LAST_FEATURE_INDEX  = 9
-NUM_OF_FEATURES_PER_FRAME = LAST_FEATURE_INDEX-FIRST_FEATURE_INDEX
+from back_end.feature_extractor import extract_mfcc
 
 
 def get_feature_files(feature_path):
@@ -37,14 +26,21 @@ def get_labels(feature_path):
 
     return [map(int, line.strip().split()) for line in file_labels[1:]]
 
-def read_features(file_name):
-    numpy_features =  np.loadtxt(file_name, skiprows=1)[:, FIRST_FEATURE_INDEX:LAST_FEATURE_INDEX]
+def read_features(wav_path, sample_rate, win_size):
+    ''' Extract features (MFCCs) and convert them to a torch tensor '''
 
-    # For pytorch - reshape it to a 3d tensor (batch) with one sequence
-    torch_tensor = Variable(torch.from_numpy(numpy_features).float())
-    torch_batch = torch_tensor.view(1, -1, NUM_OF_FEATURES_PER_FRAME)
+    features = extract_mfcc(wav_path, sample_rate, win_size)
+    features = torch.FloatTensor(features.transpose())
+
+    # Reshape it to a 3d tensor (batch) with one sequence
+    torch_batch = Variable(features.view(1, features.size(0), -1))
     lengths = Variable(torch.LongTensor([torch_batch.size(1)]))
     return torch_batch, lengths
+
+def decode_wav(model, wav_path, sample_rate=16000, win_size=100):
+    ''' Decode single wav file using the model '''
+    batch, lengths = read_features(wav_path, sample_rate, win_size)
+    return model(batch, lengths)
 
 def decode_files(model, feature_path):
 
@@ -114,12 +110,15 @@ if __name__ == '__main__':
       # -------------MENU-------------- #
     # command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("feature_path", help="A path to a directory containing the extracted feature-files and the labels")
     parser.add_argument("params_path", help="A path to a file containing the model parameters (after training)")
+    parser.add_argument("feature_path", help="A path to a directory containing the extracted feature-files and the labels")
+    parser.add_argument('--no-cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     args = parser.parse_args()
 
+    args.is_cuda = not args.no_cuda and torch.cuda.is_available()
+
     # Construct a model with the pre-trained parameters
-    model = SpeechSegmentor(is_cuda=False, load_from_file=args.params_path)
+    model = SpeechSegmentor(load_from_file=args.params_path, is_cuda=args.is_cuda)
 
     # Decode the given files
     decode_files(model, args.feature_path)

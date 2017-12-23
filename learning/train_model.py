@@ -69,10 +69,10 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     train_batches = convert_to_batches(train_data, batch_size, is_cuda)
     dev_batches   = convert_to_batches(dev_data, batch_size, is_cuda)
 
-    #optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+    optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
     # Use Adam optimizer
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)
+    #optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)
 
     best_dev_loss = 1e3
     best_iter = 0
@@ -94,7 +94,6 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             # Forward pass on the network
             start_time = time.time()
-
             # Predict
             pred_segmentations, pred_scores = model(batch, lengths, segmentations)
        
@@ -120,7 +119,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             print "The avg loss is %s" % str(loss)
             train_closs += float(loss.data[0])
 
-            # back propagation
+            # Back propagation
             loss.backward()
             optimizer.step()
             print("Backwards: %s seconds ---" % (time.time() - start_time))
@@ -182,9 +181,9 @@ if __name__ == '__main__':
     parser.add_argument("train_path", help="A path to the training set")
     parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
     parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy", default='sb')
-    parser.add_argument('--learning_rate', help='The learning rate', default=0.001, type=float)
+    parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
-    parser.add_argument('--batch_size', help='Size of training batch', default=5, type=int)
+    parser.add_argument('--batch_size', help='Size of training batch', default=10, type=int)
     parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=10, type=int)
     parser.add_argument('--no-cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     args = parser.parse_args()
@@ -213,6 +212,11 @@ if __name__ == '__main__':
         dataset = toy_dataset(dataset_size=4000, seq_len=100)
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
+
+    print '\n===> Got %s examples' % str(len(dataset))
+
+    # Fow now use only 500 examples
+    dataset.data = dataset.data[:500]
 
     # split the dataset into training set and validation set
     train_set_size = int((1-DEV_SET_PROPORTION) * len(dataset))
