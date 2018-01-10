@@ -199,12 +199,11 @@ if __name__ == '__main__':
     
     if args.dataset == 'sb':
         print '==> Using switchboard dataset'
-        dataset = switchboard_dataset(wav_path='data/swbI_release2/audio/',
-                                      trans_path='data/swbI_release2/trans/',
+        dataset = switchboard_dataset(dataset_path=args.train_path,
                                       feature_type='mfcc',
                                       sample_rate=16000, 
                                       win_size=100, # In ms
-                                      run_over=False)
+                                      run_over=True)
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'
         dataset = preaspiration_dataset(args.train_path)
