@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import sys
 import time
 import signal
 import argparse
@@ -11,7 +12,8 @@ import torch.optim as optim
 from torch.autograd import Variable
 
 from model.model import SpeechSegmentor
-from back_end.data_handler import switchboard_dataset, preaspiration_dataset, toy_dataset
+sys.path.append('./back_end')
+from data_handler import switchboard_dataset, preaspiration_dataset, toy_dataset
 
 DEV_SET_PROPORTION        = 0.1
 

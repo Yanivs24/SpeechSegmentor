@@ -3,13 +3,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import argparse
+import sys
 import os
 
 from torch.autograd import Variable
 import torch
 
 from model.model import SpeechSegmentor
-from back_end.feature_extractor import extract_mfcc
+sys.path.append('./back_end')
+from feature_extractor import extract_mfcc
 
 
 def get_feature_files(feature_path):
