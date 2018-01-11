@@ -78,11 +78,12 @@ def fix_segmentation_after_trimming(seg, voice_segments):
     new_seg = []
     last_t = 0
     last_voice_index = 0
+    voice_segments_len = len(voice_segments)
 
     for t in seg:
         # Calc voice length since last index until this time (t)
         voice_len = 0
-        while True:
+        while last_voice_index < voice_segments_len:
             start, end = voice_segments[last_voice_index]
             real_start = max(start, last_t)
             if t < start:
@@ -98,8 +99,8 @@ def fix_segmentation_after_trimming(seg, voice_segments):
                 last_voice_index += 1
 
         last_t = t
-        last_aligned_index = 0 if not new_seg else new_seg[-1]
-        new_seg.append(last_aligned_index + voice_len)
+        last_fixed_index = 0 if not new_seg else new_seg[-1]
+        new_seg.append(last_fixed_index + voice_len)
 
     return new_seg
 
