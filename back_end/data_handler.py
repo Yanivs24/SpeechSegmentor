@@ -40,7 +40,9 @@ def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_siz
     extractor = feature_extractors[features_type]
 
     # Loop over the files and extract features and labels (segmentations) from them
-    file_names = [os.path.splitext(fn)[0] for fn in os.listdir(preprocessed_data_path) if fn.endswith(WAV_EXTENSION)]
+    wav_names = [os.path.splitext(fn)[0] for fn in os.listdir(preprocessed_data_path) if fn.endswith(WAV_EXTENSION)]
+    seg_names = [os.path.splitext(fn)[0] for fn in os.listdir(preprocessed_data_path) if fn.endswith(SEG_EXTENSION)]
+    file_names = list(set(wav_names) & set(seg_names))
     print 'Constructing dataset from %s files..' % str(len(file_names))
     dataset = []
     for file in file_names:
@@ -50,7 +52,8 @@ def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_siz
         features = extractor(wav_file_path, sample_rate, win_size, **kwargs)
         seg = load_serialized_data(seg_file_path)
 
-        # TODO: convert seg from float times into indexes due to 'win_size'
+        # Convert segmentation from float times into indexes due to 'win_size'
+        seg = [int(i*1e3/win_size) for i in seg]
 
         # Convert the features into torch tensor
         features = torch.FloatTensor(features.transpose())
@@ -172,7 +175,7 @@ def switchboard_get_annotated_ids(wav_path, trans_path):
     # intesection between wav files and mark files (as we need both)
     annotated_ids = set(wav_ids) & set(mark_ids)
 
-    return list(annotated_ids)
+    return sorted(list(annotated_ids))
 
 def load_serialized_data(dataset_path):
     with open(dataset_path, 'rb') as f:

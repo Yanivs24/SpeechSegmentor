@@ -1,0 +1,4 @@
+
+        [pyannote.database.databases]
+        SwitchBoard=SwitchBoard:SwitchBoard
+    

@@ -1,0 +1,13 @@
+MANIFEST.in
+README.md
+setup.cfg
+versioneer.py
+SwitchBoard/__init__.py
+SwitchBoard/_version.py
+SwitchBoard/generate.py
+pyannote.db.switchboard.egg-info/PKG-INFO
+pyannote.db.switchboard.egg-info/SOURCES.txt
+pyannote.db.switchboard.egg-info/dependency_links.txt
+pyannote.db.switchboard.egg-info/entry_points.txt
+pyannote.db.switchboard.egg-info/requires.txt
+pyannote.db.switchboard.egg-info/top_level.txt

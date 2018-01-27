@@ -1,0 +1,2 @@
+pyannote.database>=0.11.2
+pyannote.parser>=0.6.5

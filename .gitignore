@@ -1,4 +1,5 @@
 *.pyc
+*.h5
 tmp_files/*
 !tmp_files/features/.gitkeep
 data/*
