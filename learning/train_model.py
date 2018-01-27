@@ -13,7 +13,7 @@ from torch.autograd import Variable
 
 from model.model import SpeechSegmentor
 sys.path.append('./back_end')
-from data_handler import switchboard_dataset, preaspiration_dataset, toy_dataset
+from data_handler import switchboard_dataset, switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset
 
 DEV_SET_PROPORTION        = 0.1
 
@@ -199,11 +199,12 @@ if __name__ == '__main__':
     
     if args.dataset == 'sb':
         print '==> Using switchboard dataset'
-        dataset = switchboard_dataset(dataset_path=args.train_path,
-                                      feature_type='mfcc',
-                                      sample_rate=16000, 
-                                      win_size=100, # In ms
-                                      run_over=True)
+        # dataset = switchboard_dataset(dataset_path=args.train_path,
+        #                               feature_type='mfcc',
+        #                               sample_rate=16000, 
+        #                               win_size=100, # In ms
+        #                               run_over=True)
+        dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path)
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'
         dataset = preaspiration_dataset(args.train_path)

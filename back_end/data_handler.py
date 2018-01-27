@@ -3,6 +3,7 @@ import numpy as np
 import cPickle as pickle
 import torch
 import random
+import h5py
 from torch.utils.data import Dataset
 
 from feature_extractor import feature_extractors
@@ -15,6 +16,7 @@ WAV_PREFIX     = 'sw0'
 MARK_EXTENSION = 'mrk'
 MARK_PREFIX    = 'sw'
 SEG_EXTENSION  = 'seg' 
+H5_EXTENSION   = 'h5' 
 
 PREASPIRATION_NUM_OF_FEATURES = 8
 
@@ -67,6 +69,47 @@ def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_siz
     with open(dataset_path, 'wb') as f:
         pickle.dump(dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
 
+    return dataset
+
+def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
+    '''
+    Load preprocessed switchboard data from a directory after extracting speech
+    turn embedding using pyannote.audio from switchboard's wav files. 
+
+    Params:
+        embeddings_data_path - path to a directory containing the .h5 files and their
+                               corresponding .seg files
+        hop_size             - the hop size that was used to extract the speaker embeddings -  
+                               we use it to convert the segmentation from time to indexes.
+    '''
+    print "Loading switchboard speaker embeddings from '%s'" % embeddings_data_path
+
+    # Get all the the conversations file-names
+    h5_names = [os.path.splitext(fn)[0] for fn in os.listdir(embeddings_data_path) if fn.endswith(H5_EXTENSION)]
+    seg_names = [os.path.splitext(fn)[0] for fn in os.listdir(embeddings_data_path) if fn.endswith(SEG_EXTENSION)]
+    file_names = list(set(h5_names) & set(seg_names))
+
+    print 'Constructing dataset from %s files..' % str(len(file_names))
+    dataset = []
+    for file in file_names:
+        h5_file_path  = os.path.join(embeddings_data_path, '{0}.{1}'.format(file, H5_EXTENSION))
+        seg_file_path = os.path.join(embeddings_data_path, '{0}.{1}'.format(file, SEG_EXTENSION))
+
+        # Get the segmentation and covert it from float times into indexes due to 'hop_size'
+        seg = load_serialized_data(seg_file_path)
+        seg = [int(t/hop_size) for t in seg]
+
+        # Read features (speaker embeddings) from the .h5 file 
+        file_h5 = h5py.File(h5_file_path, 'r')
+        features = np.array(file_h5['features'])
+
+        # Convert the features into torch tensor
+        features = torch.FloatTensor(features)
+
+        # Add the conversation to the dataset
+        dataset.append((features, seg))
+
+    print 'Constructed dataset of %s examples.' % str(len(dataset))
     return dataset
 
 def preprocess_switchboard_dataset(wav_dir_path, mark_dir_path, result_dir_path, sample_rate=16000):
@@ -245,6 +288,18 @@ def create_simple_dataset(dataset_size, seq_len):
 class switchboard_dataset(Dataset):
     def __init__(self, dataset_path, feature_type, sample_rate, win_size, **kwargs):
         self.data = load_switchboard(dataset_path, feature_type, sample_rate, win_size, **kwargs)
+        self.input_size = self.data[0][0].size(1)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+
+class switchboard_dataset_after_embeddings(Dataset):
+    def __init__(self, dataset_path, hop_size=0.5):
+        self.data = load_switchboard_after_embeddings(dataset_path, hop_size)
         self.input_size = self.data[0][0].size(1)
 
     def __len__(self):
