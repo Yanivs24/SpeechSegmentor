@@ -4,6 +4,7 @@ import cPickle as pickle
 import torch
 import random
 import h5py
+from collections import OrderedDict
 from torch.utils.data import Dataset
 
 from feature_extractor import feature_extractors
@@ -95,13 +96,19 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
         h5_file_path  = os.path.join(embeddings_data_path, '{0}.{1}'.format(file, H5_EXTENSION))
         seg_file_path = os.path.join(embeddings_data_path, '{0}.{1}'.format(file, SEG_EXTENSION))
 
-        # Get the segmentation and covert it from float times into indexes due to 'hop_size'
-        seg = load_serialized_data(seg_file_path)
-        seg = [int(t/hop_size) for t in seg]
-
         # Read features (speaker embeddings) from the .h5 file 
         file_h5 = h5py.File(h5_file_path, 'r')
         features = np.array(file_h5['features'])
+
+        # Get the segmentation and convert it from float times into indexes due to 'hop_size'
+        seg = load_serialized_data(seg_file_path)
+        seg = [int(t/hop_size) for t in seg]
+        # Remove illegal indexes from the right edge of the list and add the right boundary
+        seg = filter(lambda x: x < len(features), seg)
+        seg.append(len(features)-1)
+
+        # Remove duplicates 
+        seg = OrderedDict((x, True) for x in seg).keys()
 
         # Convert the features into torch tensor
         features = torch.FloatTensor(features)
@@ -298,7 +305,7 @@ class switchboard_dataset(Dataset):
 
 
 class switchboard_dataset_after_embeddings(Dataset):
-    def __init__(self, dataset_path, hop_size=0.5):
+    def __init__(self, dataset_path, hop_size=0.25):
         self.data = load_switchboard_after_embeddings(dataset_path, hop_size)
         self.input_size = self.data[0][0].size(1)
 

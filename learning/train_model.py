@@ -71,10 +71,11 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     train_batches = convert_to_batches(train_data, batch_size, is_cuda)
     dev_batches   = convert_to_batches(dev_data, batch_size, is_cuda)
 
-    optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+    # Use SGD optimizer
+    #optimizer = optim.SGD(model.parameters(), lr=learning_rate)
 
     # Use Adam optimizer
-    #optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)
 
     best_dev_loss = 1e3
     best_iter = 0
@@ -198,13 +199,16 @@ if __name__ == '__main__':
         print '==> Training on CPU'
     
     if args.dataset == 'sb':
-        print '==> Using switchboard dataset'
+        #print '==> Using switchboard dataset'
         # dataset = switchboard_dataset(dataset_path=args.train_path,
         #                               feature_type='mfcc',
         #                               sample_rate=16000, 
         #                               win_size=100, # In ms
         #                               run_over=True)
-        dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path)
+        print '==> Using preprocessed switchboard dataset '
+        dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path,
+                                                       hop_size=0.25) # hop_size should be the same as in 
+                                                                      # get_embeddings.sh
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'
         dataset = preaspiration_dataset(args.train_path)
@@ -216,9 +220,6 @@ if __name__ == '__main__':
         raise ValueError("%s - illegal dataset" % args.dataset)
 
     print '\n===> Got %s examples' % str(len(dataset))
-
-    # Fow now use only 500 examples
-    dataset.data = dataset.data[:500]
 
     # split the dataset into training set and validation set
     train_set_size = int((1-DEV_SET_PROPORTION) * len(dataset))

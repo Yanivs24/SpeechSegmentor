@@ -14,7 +14,7 @@ EMBEDDING_TMP_OUTPUT_DIR="/tmp/.pyaudio_embeddings_results_${now}"
 OUTPUT_DIR=data/swbI_release2/preprocessed/
 
 # The step size between windows - tha duration is inherently decided by the trained model
-STEP_SIZE=0.5
+STEP_SIZE=0.25
 
 # Apply the network
 echo "Extracting embeddings to ${EMBEDDING_TMP_OUTPUT_DIR}"

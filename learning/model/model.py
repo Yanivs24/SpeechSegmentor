@@ -8,7 +8,7 @@ import time
 import random
 
 # Max length of segment - in indexes
-MAX_SEGMENT_SIZE = 100
+MAX_SEGMENT_SIZE = 80
 DEFAULT_FEATURE_SIZE = 20
 
 
@@ -34,7 +34,7 @@ class NotFoundRNNsError(Exception):
 
 
 class SpeechSegmentor(nn.Module):
-    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=60, mlp_hid_dim=80, is_cuda=True, use_srnn=False, load_from_file=''):
+    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=100, mlp_hid_dim=100, is_cuda=True, use_srnn=False, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 
