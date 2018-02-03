@@ -1,11 +1,11 @@
+import time
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
 
-import time
-import random
 
 # Max length of segment - in indexes
 MAX_SEGMENT_SIZE = 80
@@ -34,7 +34,7 @@ class NotFoundRNNsError(Exception):
 
 
 class SpeechSegmentor(nn.Module):
-    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=100, mlp_hid_dim=100, is_cuda=True, use_srnn=False, load_from_file=''):
+    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=80, mlp_hid_dim=120, is_cuda=True, use_srnn=False, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 

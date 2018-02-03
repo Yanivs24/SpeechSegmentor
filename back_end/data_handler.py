@@ -1,6 +1,8 @@
 import os
 import numpy as np
 import cPickle as pickle
+import librosa
+import soundfile as sf
 import torch
 import random
 import h5py
@@ -110,6 +112,9 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
         # Remove duplicates 
         seg = OrderedDict((x, True) for x in seg).keys()
 
+        # TEMP DEBUG - remove small speech turns
+        #seg = [seg[0]]+[seg[i] for i in range(1, len(seg)-1) if (seg[i]-seg[i-1] > 6) and (seg[i+1]-seg[i] > 6)] + [seg[-1]]
+
         # Convert the features into torch tensor
         features = torch.FloatTensor(features)
 
@@ -119,7 +124,7 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
     print 'Constructed dataset of %s examples.' % str(len(dataset))
     return dataset
 
-def preprocess_switchboard_dataset(wav_dir_path, mark_dir_path, result_dir_path, sample_rate=16000):
+def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir_path, sample_rate=16000):
     '''
     Perform the first preprocessing stage for the swithcboard dataset.
     The preprocessing contains the following steps:
@@ -159,6 +164,68 @@ def preprocess_switchboard_dataset(wav_dir_path, mark_dir_path, result_dir_path,
         print 'Saving segmentation file in "%s"' % dst_seg_file_path
         with open(dst_seg_file_path, 'wb') as f:
             pickle.dump(fixed_seg, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_duration=100, sample_rate=16000):
+    ''' 
+    Trim (slice) the conversations and their corresponding segmentations according
+    to some max duration set by max_duration (in seconds).
+
+    Note:
+    This should be called after calling 'preprocess_switchboard_dataset_step1' and 
+    'dataset_dir_path' should be the result path of this step.
+    '''
+
+    # Get all the the conversations file-names
+    wav_names = [os.path.splitext(fn)[0] for fn in os.listdir(dataset_dir_path) if fn.endswith(WAV_EXTENSION)]
+    seg_names = [os.path.splitext(fn)[0] for fn in os.listdir(dataset_dir_path) if fn.endswith(SEG_EXTENSION)]
+    file_names = list(set(wav_names) & set(seg_names))
+
+    for file in file_names:
+        wav_file_path = os.path.join(dataset_dir_path, '{0}.{1}'.format(file, WAV_EXTENSION))
+        seg_file_path = os.path.join(dataset_dir_path, '{0}.{1}'.format(file, SEG_EXTENSION))
+        wav_dst_base_path = os.path.join(result_dir_path, '{0}.{1}'.format(file+'_trimmed%s', WAV_EXTENSION))
+        seg_dst_base_path = os.path.join(result_dir_path, '{0}.{1}'.format(file+'_trimmed%s', SEG_EXTENSION))
+
+        # Get the frames from the wav
+        frames, rate = librosa.load(wav_file_path, sample_rate)
+
+        # Get the segmentation
+        seg = load_serialized_data(seg_file_path)
+
+        print 'Trimming file "%s" to max duration of %s' % (wav_file_path, str(max_duration))
+        trim_count = 0
+        while True:
+            duration_left = float(len(frames)) / sample_rate
+            if (duration_left <= 0.3*max_duration) or (max(seg) == 0):
+                break
+
+            print 'duration_left: ', duration_left
+            print 'seg: ', seg
+
+            # Find the trimmimg index (the nearest time in the segmentation)
+            nearest_idx = (np.abs(np.array(seg)-max_duration)).argmin()
+
+            # Trim frames and update the rest
+            amount_of_trimmed_frames = int(seg[nearest_idx] * sample_rate)
+            trimmed_frames = frames[:amount_of_trimmed_frames]
+            frames = frames[amount_of_trimmed_frames:]
+
+            # Trim seg and update and normalize the rest
+            trimmed_seg = seg[:nearest_idx+1]
+            seg = seg[nearest_idx:]
+            seg = [seg[i] - seg[0] for i in range(len(seg))]
+
+            # Write trimmed wav file as 16-bit Signed Integer PCM (using PySoundFile)
+            trimmed_wav_path = wav_dst_base_path % str(trim_count)
+            print 'Writing trimmed wav file to %s' % trimmed_wav_path
+            sf.write(trimmed_wav_path, trimmed_frames, sample_rate, subtype='PCM_16')
+            # Write trimmed segmentation
+            trimmed_seg_path = seg_dst_base_path % str(trim_count)
+            print 'Writing trimmed seg file to %s' % trimmed_seg_path
+            with open(trimmed_seg_path, 'wb') as f:
+                pickle.dump(trimmed_seg, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+            trim_count += 1
 
 def switchboard_extract_segmentation(mark_file_path):
     '''

@@ -5,7 +5,7 @@ from pyannote.audio.features.utils import get_wav_duration
 
 WAV_EXTENSION  = '.wav'
 
-SWITCHBOARD_WAV_PATH = '/home/yaniv/Projects/SpeechSegmentor/data/swbI_release2/preprocessed/'
+SWITCHBOARD_WAV_PATH = '/home/yaniv/Projects/SpeechSegmentor/data/swbI_release2/preprocessed/trimmed'
 DATA_FILES_PATH      = '/home/yaniv/Projects/SpeechSegmentor/pyannote-db-switchboard/SwitchBoard/data'
 
 

@@ -73,9 +73,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
     # Use SGD optimizer
     #optimizer = optim.SGD(model.parameters(), lr=learning_rate)
-
     # Use Adam optimizer
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
     best_dev_loss = 1e3
     best_iter = 0
@@ -97,9 +96,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             # Forward pass on the network
             start_time = time.time()
-            # Predict
             pred_segmentations, pred_scores = model(batch, lengths, segmentations)
-       
             print("Forward: %s seconds ---" % (time.time() - start_time))
 
             # Get gold scores
@@ -144,8 +141,10 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             # Get gold scores
             gold_scores = model.get_score(batch, segmentations)
 
-            # Should be the structural hinge loss here
-            loss = torch.mean(1 + pred_scores - gold_scores)
+           # Hinge loss with margin (ReLU to zero out negative losses)
+            batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+            loss = torch.mean(batch_loss)
+
             print "The dev avg loss is %s" % str(loss)
             print "dev segmentations:\n%s" % str(pred_segmentations)
             dev_closs += float(loss.data[0])
@@ -186,7 +185,7 @@ if __name__ == '__main__':
     parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy", default='sb')
     parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
-    parser.add_argument('--batch_size', help='Size of training batch', default=10, type=int)
+    parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
     parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=10, type=int)
     parser.add_argument('--no-cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     args = parser.parse_args()

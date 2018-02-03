@@ -11,7 +11,7 @@ now=`date '+%Y_%m_%d__%H_%M_%S'`
 EMBEDDING_TMP_OUTPUT_DIR="/tmp/.pyaudio_embeddings_results_${now}"
 
 # Real output of the .h5 files
-OUTPUT_DIR=data/swbI_release2/preprocessed/
+OUTPUT_DIR=data/swbI_release2/preprocessed/trimmed
 
 # The step size between windows - tha duration is inherently decided by the trained model
 STEP_SIZE=0.25
