@@ -1,10 +1,13 @@
 #!/bin/bash
 
 # Need to be set for each machine!
-PYAUDIO_ROOT=/home/yaniv/Projects/pyannote-audio
+export ROOT_DIR=/home/yaniv/Projects/pyannote-audio/tutorials/speaker-embedding
 
 # Dir of the validation results of the trained model (that should be used now)
-VALIDATION_DIR=$PYAUDIO_ROOT/tutorials/speaker-embedding/2+0.5/TristouNet/train/Etape.SpeakerDiarization.TV.train/validate/Etape.SpeakerDiarization.TV/
+#VALIDATION_DIR=$ROOT_DIR/2+0.5/TristouNet/train/Etape.SpeakerDiarization.TV.train/validate/Etape.SpeakerDiarization.TV/
+
+VALIDATION_DIR=$ROOT_DIR/1+0.5/TristouNet/train/LibriSpeech.SpeakerDiarization.LibriSpeechClean.train/validate/LibriSpeech.SpeakerDiarization.LibriSpeechClean
+
 
 # Temp output dir
 now=`date '+%Y_%m_%d__%H_%M_%S'`

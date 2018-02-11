@@ -34,7 +34,7 @@ class NotFoundRNNsError(Exception):
 
 
 class SpeechSegmentor(nn.Module):
-    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=80, mlp_hid_dim=120, is_cuda=True, use_srnn=False, load_from_file=''):
+    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=140, mlp_hid_dim=140, is_cuda=True, use_srnn=False, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 
@@ -325,6 +325,8 @@ class SpeechSegmentor(nn.Module):
                 # we will take the second best segmentation
                 if gold_seg is not None and tuple(currrent_segmentation) == tuple(gold_seg[batch_index]):
                     print "Got gold segmentation!!!\n\n"
+                    print "Current segmentation: ", currrent_segmentation
+                    print "Gold segmentation: ", gold_seg[batch_index]
                     second_best_k = torch.sort(current_scores[batch_index], 0, descending=True)[1][2]
                     currrent_segmentation = segmentations[batch_index][second_best_k] + [i]
 
