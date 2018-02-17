@@ -6,6 +6,7 @@ import soundfile as sf
 import torch
 import random
 import h5py
+from shutil import copyfile
 from collections import OrderedDict
 from torch.utils.data import Dataset
 
@@ -113,7 +114,7 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
         seg = OrderedDict((x, True) for x in seg).keys()
 
         # TEMP DEBUG - remove small speech turns
-        #seg = [seg[0]]+[seg[i] for i in range(1, len(seg)-1) if (seg[i]-seg[i-1] > 6) and (seg[i+1]-seg[i] > 6)] + [seg[-1]]
+        #seg = [seg[0]]+[seg[i] for i in range(1, len(seg)-1) if (seg[i]-seg[i-1] > 4) and (seg[i+1]-seg[i] > 4)] + [seg[-1]]
 
         # Convert the features into torch tensor
         features = torch.FloatTensor(features)
@@ -124,13 +125,13 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
     print 'Constructed dataset of %s examples.' % str(len(dataset))
     return dataset
 
-def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir_path, sample_rate=16000):
+def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir_path, trim_non_speech=True, sample_rate=16000):
     '''
     Perform the first preprocessing stage for the swithcboard dataset.
     The preprocessing contains the following steps:
-        1) Removing all non-speech frames from the wav files
+        1) Removing all non-speech frames from the wav files (if trim_non_speech flag is on)
         2) Extracting the speaker turn-changes from the .mark files (i.e. the segmentation)
-        3) Fixing the segmentation indexes due to the trimmed wav file
+        3) Fixing the segmentation indexes due to the trimmed wav file (if trim_non_speech flag is on)
 
     In the end of this process we'll have trimmed wav files (with only voice frames) and
     their corresponding label files (the segmentation).
@@ -150,20 +151,26 @@ def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir
         dst_seg_file_path = os.path.join(result_dir_path, '{0}.seg'.format(file_id))
 
         # Trim wav file and write the result to a new file
-        print 'Trimming "%s" and storing the result in "%s"..' % (src_wav_file_path, dst_wav_file_path)
-        voice_times = trim_nonspeech(src_wav_file_path, sample_rate, dst_wav_file_path)
-        print 'Saving VAD output file in "%s"' % dst_vad_file_path
-        with open(dst_vad_file_path, 'wb') as f:
-            pickle.dump(voice_times, f, protocol=pickle.HIGHEST_PROTOCOL)
+        if trim_non_speech:
+            print 'Trimming "%s" and storing the result in "%s"..' % (src_wav_file_path, dst_wav_file_path)
+            voice_times = trim_nonspeech(src_wav_file_path, sample_rate, dst_wav_file_path)
+            print 'Saving VAD output file in "%s"' % dst_vad_file_path
+            with open(dst_vad_file_path, 'wb') as f:
+                pickle.dump(voice_times, f, protocol=pickle.HIGHEST_PROTOCOL)
+        else:
+            print 'Copying "%s" to "%s"..' % (src_wav_file_path, dst_wav_file_path)
+            copyfile(src_wav_file_path, dst_wav_file_path)
 
-        # Get segmentation and fix it due to the voice times
+        # Get segmentation 
         seg = switchboard_extract_segmentation(src_mark_file_path)
-        fixed_seg = fix_segmentation_after_trimming(seg, voice_times)
+        # fix it due to the voice times after trimming
+        if trim_non_speech:
+            seg = fix_segmentation_after_trimming(seg, voice_times)
 
         # Store the segmentation
         print 'Saving segmentation file in "%s"' % dst_seg_file_path
         with open(dst_seg_file_path, 'wb') as f:
-            pickle.dump(fixed_seg, f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump(seg, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_duration=100, sample_rate=16000):
     ''' 

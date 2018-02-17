@@ -4,8 +4,10 @@ import soundfile as sf
 import cPickle as pickle
 from vad import VAD
 
+MIN_SILENT_SEGMENT_LEN_SEC = 0.3
+SLIDING_AVERAGE_WINDOW_SIZE = 9
 
-def get_voice_times(frames, sample_rate, threshold=0, win_size=0.03, hop_size=0.01):
+def get_voice_times(frames, sample_rate, threshold=0, win_size=0.05, hop_size=0.025):
     '''
     Get the times in which the VAD (Voice Activity Detector) detected voice 
 
@@ -14,16 +16,34 @@ def get_voice_times(frames, sample_rate, threshold=0, win_size=0.03, hop_size=0.
     '''
 
     detector = VAD(fs=sample_rate, win_size_sec=win_size, win_hop_sec=hop_size)
-    decisions = detector.detect_speech(frames, threshold=threshold)
+    decisions = list(detector.detect_speech(frames, threshold=threshold))
 
+    # Smooth the binary hard decisions vector with a sliding average 
+    slide_size = int(SLIDING_AVERAGE_WINDOW_SIZE / 2)
+    smooth_decisions = []
+    for i in range(len(decisions)):
+        if (i < slide_size) or (i >= len(decisions)-slide_size):
+            smooth_decisions.append(False)
+            continue
+
+        # Majority vote
+        smooth_decisions.append(decisions[i-slide_size: i+slide_size+1].count(True) > slide_size)
+
+    # Extract speech segments from the hard decisions
     voice_times = []
     old_dec = False
     current_start = 0
     for i, dec in enumerate(decisions):
         if dec and not old_dec:
-            current_start = i
+            # We want to ignore short non-speech segments, so if the previous speech-end 
+            # is too close to this speech-start - remove the last speech segment and keep searching
+            if voice_times and ((i * hop_size) - voice_times[-1][1]) < MIN_SILENT_SEGMENT_LEN_SEC:
+                current_start = voice_times[-1][0]
+                voice_times = voice_times[:-1]
+            else:
+                current_start = i * hop_size
         if old_dec and not dec: 
-            voice_times.append((current_start*hop_size, i*hop_size))
+            voice_times.append((current_start, i * hop_size))
 
         old_dec = dec
 

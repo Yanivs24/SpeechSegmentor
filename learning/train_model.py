@@ -183,7 +183,7 @@ if __name__ == '__main__':
     parser.add_argument("train_path", help="A path to the training set")
     parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
     parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy", default='sb')
-    parser.add_argument('--learning_rate', help='The learning rate', default=0.00005, type=float)
+    parser.add_argument('--learning_rate', help='The learning rate', default=0.00001, type=float)
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
     parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
     parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=10, type=int)

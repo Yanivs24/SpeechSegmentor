@@ -89,7 +89,6 @@ class VAD(object):
         n_noise_frames : int
             number of frames at start of file to use for initial noise model
         """
-        #return self.activations(sig, n_noise_frames)
         return self.activations(sig, n_noise_frames) > threshold
 
     def stft(self, sig):

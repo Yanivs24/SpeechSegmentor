@@ -34,7 +34,7 @@ class NotFoundRNNsError(Exception):
 
 
 class SpeechSegmentor(nn.Module):
-    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=140, mlp_hid_dim=140, is_cuda=True, use_srnn=False, load_from_file=''):
+    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=200, mlp_hid_dim=200, is_cuda=True, use_srnn=False, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 
