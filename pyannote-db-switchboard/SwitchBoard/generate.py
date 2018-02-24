@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
 import os
+import sys
 from pyannote.audio.features.utils import get_wav_duration
 
 WAV_EXTENSION  = '.wav'
 
-SWITCHBOARD_WAV_PATH = '/home/yaniv/Projects/SpeechSegmentor/data/swbI_release2/preprocessed/trimmed'
-DATA_FILES_PATH      = '/home/yaniv/Projects/SpeechSegmentor/pyannote-db-switchboard/SwitchBoard/data'
-
+DATA_FILES_PATH      = 'pyannote-db-switchboard/SwitchBoard/data'
 
 def generate_mdtm_files(wav_dir_path, dst_dir_path):
     subsets_wav_files  = dict()
@@ -37,5 +36,5 @@ def generate_mdtm_files(wav_dir_path, dst_dir_path):
                 ))
 
 if __name__ == '__main__':
-    generate_mdtm_files(SWITCHBOARD_WAV_PATH, DATA_FILES_PATH)
+    generate_mdtm_files(sys.argv[1], DATA_FILES_PATH)
     

@@ -172,7 +172,7 @@ def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir
         with open(dst_seg_file_path, 'wb') as f:
             pickle.dump(seg, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_duration=100, sample_rate=16000):
+def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_duration=60, sample_rate=16000):
     ''' 
     Trim (slice) the conversations and their corresponding segmentations according
     to some max duration set by max_duration (in seconds).
@@ -279,8 +279,8 @@ def switchboard_extract_segmentation(mark_file_path):
         if speaker not in ('A', 'B'):
             raise ValueError("Found illegal speaker in the file: %s" % mark_file_path)
 
-        # If this line contains a new speaker - and the mergin between their speech time
-        # is not big - use the median of the times as the turn-change time
+        # If this line contains a new speaker - use the median of the times
+        # as the turn-change time
         if prev_speaker and prev_speaker != speaker:
             median_time = 0.5 * (prev_speaker_end_time + speaker_start_time)
             segmentation.append(median_time)

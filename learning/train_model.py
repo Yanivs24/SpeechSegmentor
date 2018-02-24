@@ -74,7 +74,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     # Use SGD optimizer
     #optimizer = optim.SGD(model.parameters(), lr=learning_rate)
     # Use Adam optimizer
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
     best_dev_loss = 1e3
     best_iter = 0
@@ -104,15 +104,17 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             gold_scores = model.get_score(batch, segmentations)
             print("Get score: %s seconds ---" % (time.time() - start_time))
 
-            #print 'pred score: %s' % str(pred_scores.data.cpu().numpy())
-            #print 'gold score: %s' % str(gold_scores.data.cpu().numpy())
+            print 'pred score: %s' % str(pred_scores.data.cpu().numpy())
+            print 'gold score: %s' % str(gold_scores.data.cpu().numpy())
             print segmentations
             print '------------------------------------------------------------'
             print pred_segmentations
 
             start_time = time.time()
             # Hinge loss with margin (ReLU to zero out negative losses)
-            batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+            #batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+            # Structural loss
+            batch_loss = pred_scores - gold_scores
 
             loss = torch.mean(batch_loss)
             print "Batch losses: ", batch_loss
@@ -129,7 +131,9 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
         # Check performance on the dev set
         dev_closs = 0.0
-        dev_accuracy = 0
+        dev_correct_counter = 0
+        dev_gold_counter    = 0
+        dev_pred_counter    = 0
         for batch, lengths, segmentations in dev_batches:
 
             # Clear gradients (Pytorch accumulates gradients)
@@ -141,8 +145,20 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             # Get gold scores
             gold_scores = model.get_score(batch, segmentations)
 
-           # Hinge loss with margin (ReLU to zero out negative losses)
-            batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+            # Update counters for precision and recall
+            for gold_seg, pred_seg in zip(segmentations, pred_segmentations):
+                # Correct predictions (with 0.5 sec forgiveness collar)
+                for y in pred_seg:
+                    if filter(lambda t: abs(t-y) <= 2, gold_seg[1:-1]):
+                        dev_correct_counter += 1 
+                # Count boundaries                        
+                dev_gold_counter += len(gold_seg)
+                dev_pred_counter += len(pred_seg)
+
+            # Hinge loss with margin (ReLU to zero out negative losses)
+            #batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+            # Structural loss
+            batch_loss = pred_scores - gold_scores
             loss = torch.mean(batch_loss)
 
             print "The dev avg loss is %s" % str(loss)
@@ -155,6 +171,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
         print "#####################################################################"
         print "Train avg loss %s | Dev avg loss: %s" % (avg_train_loss, avg_dev_loss)
+        print "Dev precision: %f" % (float(dev_correct_counter) / dev_pred_counter)
+        print "Dev recall: %f" % (float(dev_correct_counter) / dev_gold_counter)
         print "#####################################################################"
 
         # check if it's the best (minimum) loss so far
