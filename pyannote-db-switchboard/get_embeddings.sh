@@ -15,7 +15,7 @@ now=`date '+%Y_%m_%d__%H_%M_%S'`
 EMBEDDING_TMP_OUTPUT_DIR="/tmp/.pyaudio_embeddings_results_${now}"
 
 # The step size between windows - the duration is inherently decided by the trained model
-STEP_SIZE=0.25
+STEP_SIZE=0.5
 
 # Create MDTM files for the embedding extractor
 echo "Generating mdtm files containing data for the extractor.."

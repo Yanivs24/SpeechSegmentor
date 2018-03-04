@@ -8,7 +8,7 @@ import numpy as np
 
 
 # Max length of segment - in indexes
-MAX_SEGMENT_SIZE = 80
+MAX_SEGMENT_SIZE = 120
 DEFAULT_FEATURE_SIZE = 20
 
 
@@ -34,12 +34,14 @@ class NotFoundRNNsError(Exception):
 
 
 class SpeechSegmentor(nn.Module):
-    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE, rnn_output_dim=300, mlp_hid_dim=300, is_cuda=True, use_srnn=False, load_from_file=''):
+    def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE,
+                 rnn_output_dim=100, sum_mlp_hid_dims=(200, 100),
+                 output_mlp_hid_dim=200, is_cuda=True, use_srnn=False, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 
         # Use BiRNN and summation instead of segmental RNN (much faster)
-        self.SIMPLE_MODE = not use_srnn
+        self.SUM_MODE = not use_srnn
 
         self.rnn_output_dim = rnn_output_dim
 
@@ -56,18 +58,21 @@ class SpeechSegmentor(nn.Module):
         # Backward RNN
         self.RNN_B = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
 
-        # MLP hidden layer
-        if self.SIMPLE_MODE:
-            self.mlp_linear1 = nn.Linear(2*rnn_output_dim, mlp_hid_dim)
-        # This is because the concatat in phi
+        if self.SUM_MODE:
+            # Sum MLP hidden layers (we use them only in sum mode)
+            self.mlp_linear1 = nn.Linear(2*rnn_output_dim, sum_mlp_hid_dims[0])
+            self.mlp_linear2 = nn.Linear(sum_mlp_hid_dims[0], sum_mlp_hid_dims[1])
+            # MLP output layer (gets as input concatenation of 2 BiRNN outputs plus the sum MLP output)
+            self.mlp_output1 = nn.Linear(4*rnn_output_dim + sum_mlp_hid_dims[1], output_mlp_hid_dim)
         else:
-            self.mlp_linear1 = nn.Linear(6*rnn_output_dim, mlp_hid_dim)
+            # This is due the segmental RNN concatenation in phi
+            self.mlp_output1 = nn.Linear(6*rnn_output_dim, output_mlp_hid_dim)
 
-        # MLP activation function
+        # We return a scalar score
+        self.mlp_output2 = nn.Linear(output_mlp_hid_dim, 1)
+
+        # MLP activation function 
         self.mlp_activation = nn.ReLU()
-
-        # MLP output layer (returns a scalar score)
-        self.mlp_linear2 = nn.Linear(mlp_hid_dim, 1)
 
         # Make all the params cuda tensors
         if is_cuda:
@@ -179,12 +184,19 @@ class SpeechSegmentor(nn.Module):
                 hidden_backward_rnns_dict[(mirror_i, mirror_j)] = hidden
                 self.backward_rnns_dict[(mirror_i, mirror_j)] =  out[:, -1]
 
-    def mlp_layer(self, input):
+    def mlp_sum_layer(self, input):
         ''' 
-        Propagate the given vector through a one hidden layer MLP with one output.
+        Propagate the given vector through a MLP with one hidden layers.
         '''
-        hidden = self.mlp_activation(self.mlp_linear1(input))
-        return self.mlp_linear2(hidden)
+        hidden1 = self.mlp_activation(self.mlp_linear1(input))
+        return self.mlp_linear2(hidden1)
+
+    def mlp_output_layer(self, input):
+        ''' 
+        Propagate the given vector through a one hidden layer MLP with scalar output.
+        '''
+        hidden = self.mlp_activation(self.mlp_output1(input))
+        return self.mlp_output2(hidden)
 
     def get_local_score(self, batch, y_start, y_end):
         ''' 
@@ -200,17 +212,31 @@ class SpeechSegmentor(nn.Module):
 
         Notes:
             Here we calculate the feature representation of the given segment 
-            (i.e. phi(seq, y_i, y_i+1)) and feed it into a MLP that produces one output (score).
+            (i.e. phi(seq, y_i, y_i+1)) and feed it into a MLP that produces scalar output (score).
         '''
 
         seq_length = batch.size(1)
 
         try:
-            if self.SIMPLE_MODE:
+            if self.SUM_MODE:
                 if y_start == 0:
-                    features = self.BiRNN_sums[:, y_end, :]
+                    # Get birnn sum over the segment
+                    birnn_sum = self.BiRNN_sums[:, y_end, :]
+                    # Get BiRNN(seq, y_start)
+                    birnn_y_start = self.BiRNN_sums[:, y_start, :]
                 else:
-                    features = self.BiRNN_sums[:, y_end, :] - self.BiRNN_sums[:, y_start-1, :]
+                    # Get birnn sum over the segment
+                    birnn_sum = self.BiRNN_sums[:, y_end, :] - self.BiRNN_sums[:, y_start-1, :]
+                    # Get BiRNN(seq, y_start)
+                    birnn_y_start = self.BiRNN_sums[:, y_start, :] - self.BiRNN_sums[:, y_start-1, :]
+
+                # Get BiRNN(seq, y_end)
+                birnn_y_end = self.BiRNN_sums[:, y_end, :] - self.BiRNN_sums[:, y_end-1, :]
+
+                # Concatenate the BiRNNs with the MLP of the RNNs sum - 
+                # this is the actual Phi function
+                features = torch.cat((birnn_y_start, birnn_y_end, self.mlp_sum_layer(birnn_sum)),  
+                                      dim=1)
 
             else:         
             
@@ -224,8 +250,8 @@ class SpeechSegmentor(nn.Module):
                                          self.backward_rnns_dict[seq_length - 1, y_end]),
                                          dim=1)
 
-                # Concatenate the BiRNNs with RNN_F and RNN_B of the segment
-                # This is the actual Phi function
+                # Concatenate the BiRNNs with RNN_F and RNN_B of the segment -
+                # this is the actual Phi function
                 features = torch.cat((birnn_y_start, 
                                       birnn_y_end,
                                       self.forward_rnns_dict[y_start, y_end], 
@@ -233,10 +259,11 @@ class SpeechSegmentor(nn.Module):
                                       dim=1)
 
         except AttributeError:
-            func_name = 'calc_birnn_sum' if self.SIMPLE_MODE else 'calc_all_rnns'
+            func_name = 'calc_birnn_sum' if self.SUM_MODE else 'calc_all_rnns'
             raise NotFoundRNNsError('"%s" must be called before calculating score or forward()ing!') % func_name
 
-        return self.mlp_layer(features)
+        # Get the scalar score
+        return self.mlp_output_layer(features)
 
     def get_score(self, batch, segmentations):
         '''
@@ -266,7 +293,6 @@ class SpeechSegmentor(nn.Module):
 
         return scores
 
-
     def get_local_task_loss(self, pred_segmentations, gold_segmentations, prev_y, new_y):
 
         batch_size = len(pred_segmentations)
@@ -277,15 +303,28 @@ class SpeechSegmentor(nn.Module):
         for batch_index in range(batch_size):
 
             # Amount of predicted points so far
-            predicted_len = len(pred_segmentations[batch_index][prev_y])
+            pred_seg = pred_segmentations[batch_index][prev_y]
             gold_seg = gold_segmentations[batch_index]
 
-            if len(gold_seg) > predicted_len:
-                distance = abs(new_y-gold_seg[predicted_len])
-            else:
-                distance = new_y
+            # get the distance from the closest point to new_y
+            min_dist = min(abs(new_y - x) for x in gold_seg)
+            task_losses[batch_index] = max(0, min_dist - 3)
 
-            task_losses[batch_index] = max(0, distance - 3)
+            # if pred_seg == [0]:
+            #     #print 'init recall distances'
+            #     task_losses[batch_index] += sum(gold_seg)
+            # else:
+            #     # check if we improved the closest point from the gold segmentation
+            #     for i in range(len(gold_seg)):
+            #         min_dist = min(abs(gold_seg[i] - x) for x in pred_seg)
+            #         new_dist = abs(gold_seg[i] - new_y)
+            #         # decrease the difference from the loss
+            #         if new_dist < min_dist:
+            #             task_losses[batch_index] -= min_dist + new_dist
+
+                #if task_losses[batch_index] < 0:
+                    #print "@@@@@@@ Smaller than zero warning @@@@@@@@@@@"
+                    #task_losses[batch_index] = 0
 
             # Penalty - if this is the last segmnet of the prediction, and the size
             # of the prediction is different from the size of the gold segmentations:
@@ -305,16 +344,19 @@ class SpeechSegmentor(nn.Module):
             current_gold_seg = gold_segmentations[batch_index]
 
             for i,y in enumerate(current_pred_seg):
-                if len(current_gold_seg) > i:
-                    distance = abs(current_pred_seg[i]-current_gold_seg[i])
-                else:
-                    distance = current_pred_seg[i]
 
-                task_losses[batch_index] += max(0, distance - 3)
+                min_dist = min(abs(y - x) for x in current_gold_seg)
 
-            #if current_gold_len > current_pred_len:
-            #    task_losses[batch_index] += 20 * abs(current_gold_len - current_pred_len)
+                task_losses[batch_index] += max(0, min_dist - 3)
 
+            # for i,y in enumerate(current_gold_seg):
+            #     min_dist = min(abs(y - x) for x in current_pred_seg)
+            #     task_losses[batch_index] += max(0, min_dist - 3)
+
+            # print current_pred_seg
+            # print current_gold_seg
+            # print task_losses[batch_index]
+            # exit()
 
         return task_losses
 
@@ -336,9 +378,9 @@ class SpeechSegmentor(nn.Module):
             The algorithm complexity is O(n**2)
         '''
     
-        # First, calculate all the possible segment-RNNs of the sequences in batch
+        # First, calculate all the possible segment-RNNs or sum-RNNs of the sequences in batch
         start_time = time.time()
-        if self.SIMPLE_MODE:
+        if self.SUM_MODE:
             self.calc_birnn_sums(batch, lengths)
         else:
             self.calc_all_rnns(batch)
@@ -364,8 +406,8 @@ class SpeechSegmentor(nn.Module):
             start_index = max(0, i-MAX_SEGMENT_SIZE)
             for j in range(start_index, i):
                 current_scores[:, j-start_index] = best_scores[:, j] + self.get_local_score(batch, j, i)[:, 0].data
-                if gold_seg is not None:                
-                    current_scores[:, j-start_index] += self.get_local_task_loss(segmentations, gold_seg, j, i) 
+                # if gold_seg is not None:                
+                #     current_scores[:, j-start_index] += 0.01*self.get_local_task_loss(segmentations, gold_seg, j, i) 
         
             # Choose the best scores and their corresponding indexes
             max_scores, k = torch.max(current_scores, 1)
@@ -381,8 +423,8 @@ class SpeechSegmentor(nn.Module):
                     print "Got gold segmentation!!!\n\n"
                     print "Current segmentation: ", currrent_segmentation
                     print "Gold segmentation: ", gold_seg[batch_index]
-                    # second_best_k = torch.sort(current_scores[batch_index], 0, descending=True)[1][2]
-                    # currrent_segmentation = segmentations[batch_index][second_best_k] + [i]
+                    second_best_k = torch.sort(current_scores[batch_index], 0, descending=True)[1][2]
+                    currrent_segmentation = segmentations[batch_index][second_best_k] + [i]
 
                 segmentations[batch_index].append(currrent_segmentation)
 
@@ -392,19 +434,19 @@ class SpeechSegmentor(nn.Module):
         for i, seg in enumerate(segmentations):
             last_index = lengths[i].data.cpu().numpy()[0] - 1
             final_segmentations.append(seg[last_index])
-            
+
         # Get the scores of the best segmentations 
         final_scores = self.get_score(batch, final_segmentations) 
 
         # If gold seg' is given, add the task loss to the score (batch-wise)
-        if gold_seg is not None:
-            final_scores += Variable(self.get_task_loss(final_segmentations, gold_seg))
-        
+        # if gold_seg is not None:
+        #     final_scores += 0.01*Variable(self.get_task_loss(final_segmentations, gold_seg))
+
         return final_segmentations, final_scores
 
     def store_params(self, fpath):
-	   torch.save(self.state_dict(), fpath)
+       torch.save(self.state_dict(), fpath)
 
     def load_params(self, fpath):
-	   self.load_state_dict(torch.load(fpath))
+       self.load_state_dict(torch.load(fpath))
 

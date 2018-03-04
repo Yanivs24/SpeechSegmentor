@@ -49,7 +49,7 @@ def convert_to_batches(data, batch_size, is_cuda):
             padded_batch[j] = torch.cat([ten, torch.zeros(max_length - current_length, features_length)])
             lengths.append(current_length)
 
-        # Convert to cuda variables
+        # Convert to variables
         padded_batch = Variable(padded_batch)
         lengths = Variable(torch.LongTensor(lengths))
 
@@ -112,9 +112,9 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             start_time = time.time()
             # Hinge loss with margin (ReLU to zero out negative losses)
-            #batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+            batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
             # Structural loss
-            batch_loss = pred_scores - gold_scores
+            #batch_loss = pred_scores - gold_scores
 
             loss = torch.mean(batch_loss)
             print "Batch losses: ", batch_loss
@@ -156,13 +156,16 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                 dev_pred_counter += len(pred_seg)
 
             # Hinge loss with margin (ReLU to zero out negative losses)
-            #batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+            batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
             # Structural loss
-            batch_loss = pred_scores - gold_scores
+            #batch_loss = pred_scores - gold_scores
             loss = torch.mean(batch_loss)
 
+            print segmentations
+            print '------------------------------------------------------------'
+            print pred_segmentations
+
             print "The dev avg loss is %s" % str(loss)
-            print "dev segmentations:\n%s" % str(pred_segmentations)
             dev_closs += float(loss.data[0])
 
         # Average train and dev losses
@@ -224,8 +227,8 @@ if __name__ == '__main__':
         #                               run_over=True)
         print '==> Using preprocessed switchboard dataset '
         dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path,
-                                                       hop_size=0.25) # hop_size should be the same as in 
-                                                                      # get_embeddings.sh
+                                                       hop_size=0.5) # hop_size should be the same as used 
+                                                                     # in get_embeddings.sh
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'
         dataset = preaspiration_dataset(args.train_path)

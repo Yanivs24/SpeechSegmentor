@@ -172,7 +172,7 @@ def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir
         with open(dst_seg_file_path, 'wb') as f:
             pickle.dump(seg, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_duration=60, sample_rate=16000):
+def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_duration=100, sample_rate=16000):
     ''' 
     Trim (slice) the conversations and their corresponding segmentations according
     to some max duration set by max_duration (in seconds).
@@ -347,19 +347,22 @@ def load_preaspiration(dataset_path):
     
     return dataset
 
-def create_simple_dataset(dataset_size, seq_len):
+def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
 
     dataset = []
     for _ in range(dataset_size):
 
         ex = torch.zeros(seq_len, 1)
 
-        start = random.randrange(1, seq_len-2)
-        end   = random.randrange(start+1, seq_len-1)
+        # Get random segmentation
+        seg_size = np.random.randint(max_seg_size)
+        seg = [0] + sorted(set(np.random.randint(1, seq_len-1, seg_size))) + [seq_len-1]
 
-        ex[start:end+1] = 1
+        for i in range(len(seg)-1):
+            ex[seg[i]:seg[i+1]] = i
+        ex[seq_len-1] = i
 
-        dataset.append((ex, (0, start, end, seq_len-1)))
+        dataset.append((ex, seg))
 
     return dataset
 
