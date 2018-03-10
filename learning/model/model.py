@@ -1,11 +1,8 @@
 import time
-import random
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.autograd import Variable
 import numpy as np
-
 
 # Max length of segment - in indexes
 MAX_SEGMENT_SIZE = 120
@@ -19,6 +16,7 @@ def sort_and_pack(tensor, lengths):
     sorted_inputs = tensor.gather(0, index_sorted_idx.long())
     packed_seq = torch.nn.utils.rnn.pack_padded_sequence(sorted_inputs, sorted_len.cpu().data.numpy(), batch_first=True)
     return packed_seq, sorted_idx
+
 
 def unpack_and_unsort(packed, sorted_idx):
     unpacked, unpacked_len = torch.nn.utils.rnn.pad_packed_sequence(packed, batch_first=True)
@@ -50,7 +48,7 @@ class SpeechSegmentor(nn.Module):
         # Network parameters:
 
         # BiLSTM (2D LSTM)
-        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.0)
+        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.3)
 
         # Forward RNN
         self.RNN_F = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
@@ -60,18 +58,18 @@ class SpeechSegmentor(nn.Module):
 
         if self.SUM_MODE:
             # Sum MLP hidden layers (we use them only in sum mode)
-            self.mlp_linear1 = nn.Linear(2*rnn_output_dim, sum_mlp_hid_dims[0])
+            self.mlp_linear1 = nn.Linear(2 * rnn_output_dim, sum_mlp_hid_dims[0])
             self.mlp_linear2 = nn.Linear(sum_mlp_hid_dims[0], sum_mlp_hid_dims[1])
             # MLP output layer (gets as input concatenation of 2 BiRNN outputs plus the sum MLP output)
-            self.mlp_output1 = nn.Linear(4*rnn_output_dim + sum_mlp_hid_dims[1], output_mlp_hid_dim)
+            self.mlp_output1 = nn.Linear(4 * rnn_output_dim + sum_mlp_hid_dims[1], output_mlp_hid_dim)
         else:
             # This is due the segmental RNN concatenation in phi
-            self.mlp_output1 = nn.Linear(6*rnn_output_dim, output_mlp_hid_dim)
+            self.mlp_output1 = nn.Linear(6 * rnn_output_dim, output_mlp_hid_dim)
 
         # We return a scalar score
         self.mlp_output2 = nn.Linear(output_mlp_hid_dim, 1)
 
-        # MLP activation function 
+        # MLP activation function
         self.mlp_activation = nn.ReLU()
 
         # Make all the params cuda tensors
@@ -81,6 +79,7 @@ class SpeechSegmentor(nn.Module):
         # If given - load the model's parameters from a file
         if load_from_file:
             self.load_params(load_from_file)
+
 
     def calc_birnn_sums(self, batch, lengths):
         '''
@@ -303,7 +302,6 @@ class SpeechSegmentor(nn.Module):
         for batch_index in range(batch_size):
 
             # Amount of predicted points so far
-            pred_seg = pred_segmentations[batch_index][prev_y]
             gold_seg = gold_segmentations[batch_index]
 
             # get the distance from the closest point to new_y
@@ -436,17 +434,16 @@ class SpeechSegmentor(nn.Module):
             final_segmentations.append(seg[last_index])
 
         # Get the scores of the best segmentations 
-        final_scores = self.get_score(batch, final_segmentations) 
+        final_scores = self.get_score(batch, final_segmentations)     
 
         # If gold seg' is given, add the task loss to the score (batch-wise)
         # if gold_seg is not None:
         #     final_scores += 0.01*Variable(self.get_task_loss(final_segmentations, gold_seg))
-
         return final_segmentations, final_scores
 
     def store_params(self, fpath):
-       torch.save(self.state_dict(), fpath)
+        torch.save(self.state_dict(), fpath)
 
     def load_params(self, fpath):
-       self.load_state_dict(torch.load(fpath))
+        self.load_state_dict(torch.load(fpath))
 

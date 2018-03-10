@@ -12,23 +12,10 @@ import torch
 from model.model import SpeechSegmentor
 sys.path.append('./back_end')
 from feature_extractor import extract_mfcc
+from data_handler import switchboard_dataset, switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset
 
 
-def get_feature_files(feature_path):
-    full_path = os.path.join(feature_path, FILE_WITH_FEATURE_FILE_LIST)
-    with open(full_path) as f:
-        file_names = f.readlines()
-
-    return [line.strip() for line in file_names]
-
-def get_labels(feature_path):
-    full_path = os.path.join(feature_path, FILE_WITH_LABELS)
-    with open(full_path) as f:
-        file_labels = f.readlines()
-
-    return [map(int, line.strip().split()) for line in file_labels[1:]]
-
-def read_features(wav_path, sample_rate, win_size):
+def get_mfcc_features(wav_path, sample_rate, win_size):
     ''' Extract features (MFCCs) and convert them to a torch tensor '''
 
     features = extract_mfcc(wav_path, sample_rate, win_size)
@@ -41,51 +28,63 @@ def read_features(wav_path, sample_rate, win_size):
 
 def decode_wav(model, wav_path, sample_rate=16000, win_size=100):
     ''' Decode single wav file using the model '''
-    batch, lengths = read_features(wav_path, sample_rate, win_size)
+    batch, lengths = get_mfcc_features(wav_path, sample_rate, win_size)
     return model(batch, lengths)
 
-def decode_files(model, feature_path):
+def convert_to_model_format(features, is_cuda):
+    ''' 
+    Reshape a feature vector to a 3d tensor (batch) with one sequence 
+    TODO: use bigger batches as in training
+    '''
 
-    # get names of feature files to decode
-    feature_files_list = get_feature_files(feature_path)
+    torch_batch = Variable(features.view(1, features.size(0), -1))
+    lengths = Variable(torch.LongTensor([torch_batch.size(1)]))
 
-    # get their corresponding labels
-    labels_list = get_labels(feature_path)
+    if is_cuda:
+        torch_batch = torch_batch.cuda()
+        lengths = lengths.cuda()
 
-    # run over all feature files
+    return torch_batch, lengths
+
+
+def decode_data(model, dataset, is_cuda):
+
+    # Loop over all dataset examples
     left_err = 0
     right_err = 0
     X = []
     Y = []
-    for file, labels in zip(feature_files_list, labels_list):
+    for features, labels in dataset:
 
-        # get a feature matrix and convert it into a pytorch tensor
-        features_tensor, lengths = read_features(file) 
-
-        # Fix labels - these labels assume counting from 1 - so decrement
-        labels = (labels[0]-1, labels[1]-1)
+        # Convert it to a batch tensor with one object (TODO: use a bigger batche)
+        batch, lengths = convert_to_model_format(features, is_cuda) 
 
         # Predict using the model
-        segmentations, _ = model(features_tensor, lengths)
+        segmentations, _ = model(batch, lengths)
+        segmentations = segmentations[0]
          
+        print 'Predicted:', segmentations
+        print 'Gold:', labels
 
-        print segmentations
-        print labels
+        if len(segmentations) != len(labels):
+            print 'Bad length - the predicted length is %d while the gold length is %d' %  \
+                                                   (len(segmentations), len(labels))
+            continue
 
-        # Debug:
-        predicted_labels = [1, 2]
+        # Ignore the fixed boundaries:
+        predicted_labels = segmentations[1:-1]
+        gold_labels      = labels[1:-1]
 
         # store pre-aspiration durations
-        X.append(labels[1]-labels[0])
+        X.append(gold_labels[1]-gold_labels[0])
         Y.append(predicted_labels[1]-predicted_labels[0])
 
         # not found - zeros vector
         if predicted_labels[1] <= predicted_labels[0]:
             print 'Warning - event has not found in: %s' % file
             
-
-        left_err += np.abs(labels[0]-predicted_labels[0])
-        right_err += np.abs(labels[1]-predicted_labels[1])
+        left_err += np.abs(gold_labels[0]-predicted_labels[0])
+        right_err += np.abs(gold_labels[1]-predicted_labels[1])
 
     print 'left_err: ',  float(left_err)/len(feature_files_list)
     print 'right_err: ', float(right_err)/len(feature_files_list)
@@ -113,14 +112,37 @@ if __name__ == '__main__':
     # command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("params_path", help="A path to a file containing the model parameters (after training)")
-    parser.add_argument("feature_path", help="A path to a directory containing the extracted feature-files and the labels")
+    parser.add_argument("decode_path", help="A path to a directory containing the extracted features for the decoding")
+    parser.add_argument("--dataset", help="dataset/testset to be decoded: sb(switchboard)/pa/toy", default='pa')
     parser.add_argument('--no-cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     args = parser.parse_args()
 
     args.is_cuda = not args.no_cuda and torch.cuda.is_available()
 
+    if args.is_cuda:
+        print '==> Decoding on GPU using cuda'
+    else:
+        print '==> Decoding on CPU'
+
+    if args.dataset == 'sb':
+        print '==> Decoding preprocessed switchboard testset '
+        dataset = switchboard_dataset_after_embeddings(dataset_path=args.decode_path,
+                                                       hop_size=0.5) # hop_size should be the same as used 
+                                                                     # in get_embeddings.sh
+    elif args.dataset == 'pa':
+        print '==> Decoding preaspiration testset'
+        dataset = preaspiration_dataset(args.decode_path)
+    # Synthetic simple dataset for debugging
+    elif args.dataset == 'toy':
+        print '==> Decoding toy testset'
+        dataset = toy_dataset(dataset_size=1000, seq_len=100)
+    else:
+        raise ValueError("%s - illegal dataset" % args.dataset)
+
     # Construct a model with the pre-trained parameters
-    model = SpeechSegmentor(load_from_file=args.params_path, is_cuda=args.is_cuda)
+    model = SpeechSegmentor(rnn_input_dim=dataset.input_size, 
+                            load_from_file=args.params_path,
+                            is_cuda=args.is_cuda)
 
     # Decode the given files
-    decode_files(model, args.feature_path)
+    decode_data(model, dataset, args.is_cuda)
