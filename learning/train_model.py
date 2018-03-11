@@ -62,7 +62,7 @@ def convert_to_batches(data, batch_size, is_cuda):
 
     return batches
 
-def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations, is_cuda, patience, params_file):
+def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations, is_cuda, patience, use_taskloss, params_file):
     ''' 
     Train the network 
     '''
@@ -111,10 +111,12 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             print pred_segmentations
 
             start_time = time.time()
-            # Hinge loss with margin (ReLU to zero out negative losses)
-            batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
             # Structural loss
-            #batch_loss = pred_scores - gold_scores
+	    if use_taskloss:
+            	batch_loss = pred_scores - gold_scores
+            # Hinge loss with margin (ReLU to zero out negative losses)
+	    else:
+            	batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
 
             loss = torch.mean(batch_loss)
             print "Batch losses: ", batch_loss
@@ -155,10 +157,13 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                 dev_gold_counter += len(gold_seg)
                 dev_pred_counter += len(pred_seg)
 
-            # Hinge loss with margin (ReLU to zero out negative losses)
-            batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
             # Structural loss
-            #batch_loss = pred_scores - gold_scores
+            if use_taskloss:
+                batch_loss = pred_scores - gold_scores
+            # Hinge loss with margin (ReLU to zero out negative losses)
+            else:
+                batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+
             loss = torch.mean(batch_loss)
 
             print segmentations
@@ -209,6 +214,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
     parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=10, type=int)
     parser.add_argument('--no-cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
+    parser.add_argument('--use_task_loss', help='Train with strucutal loss with a specific task loss', action='store_true', default=False)
     args = parser.parse_args()
 
     args.is_cuda = not args.no_cuda and torch.cuda.is_available()
@@ -247,7 +253,7 @@ if __name__ == '__main__':
     dev_data   = dataset[train_set_size:]
 
     # create a new model 
-    model = SpeechSegmentor(rnn_input_dim=dataset.input_size, is_cuda=args.is_cuda)
+    model = SpeechSegmentor(rnn_input_dim=dataset.input_size, is_cuda=args.is_cuda, use_task_loss=args.use_task_loss)
 
     # train the model
     train_model(model,
@@ -258,5 +264,6 @@ if __name__ == '__main__':
                 args.num_iters,
                 args.is_cuda,
                 args.patience,
+                args.use_task_loss,
                 args.params_path)
 

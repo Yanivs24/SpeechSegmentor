@@ -5,7 +5,7 @@ from torch.autograd import Variable
 import numpy as np
 
 # Max length of segment - in indexes
-MAX_SEGMENT_SIZE = 120
+MAX_SEGMENT_SIZE = 70
 DEFAULT_FEATURE_SIZE = 20
 
 
@@ -33,8 +33,9 @@ class NotFoundRNNsError(Exception):
 
 class SpeechSegmentor(nn.Module):
     def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE,
-                 rnn_output_dim=100, sum_mlp_hid_dims=(200, 100),
-                 output_mlp_hid_dim=200, is_cuda=True, use_srnn=False, load_from_file=''):
+                 rnn_output_dim=100, sum_mlp_hid_dims=(200, 200),
+                 output_mlp_hid_dim=200, is_cuda=True, use_srnn=False,
+                 use_task_loss=False, task_loss_coef=0.01, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 
@@ -44,6 +45,10 @@ class SpeechSegmentor(nn.Module):
         self.rnn_output_dim = rnn_output_dim
 
         self.is_cuda = is_cuda
+
+        self.use_task_loss = use_task_loss
+
+        self.task_loss_coef = task_loss_coef
 
         # Network parameters:
 
@@ -234,7 +239,7 @@ class SpeechSegmentor(nn.Module):
 
                 # Concatenate the BiRNNs with the MLP of the RNNs sum - 
                 # this is the actual Phi function
-                features = torch.cat((birnn_y_start, birnn_y_end, self.mlp_sum_layer(birnn_sum)),  
+                features = torch.cat((birnn_y_start, birnn_y_end, birnn_sum),  
                                       dim=1)
 
             else:         
@@ -308,27 +313,6 @@ class SpeechSegmentor(nn.Module):
             min_dist = min(abs(new_y - x) for x in gold_seg)
             task_losses[batch_index] = max(0, min_dist - 3)
 
-            # if pred_seg == [0]:
-            #     #print 'init recall distances'
-            #     task_losses[batch_index] += sum(gold_seg)
-            # else:
-            #     # check if we improved the closest point from the gold segmentation
-            #     for i in range(len(gold_seg)):
-            #         min_dist = min(abs(gold_seg[i] - x) for x in pred_seg)
-            #         new_dist = abs(gold_seg[i] - new_y)
-            #         # decrease the difference from the loss
-            #         if new_dist < min_dist:
-            #             task_losses[batch_index] -= min_dist + new_dist
-
-                #if task_losses[batch_index] < 0:
-                    #print "@@@@@@@ Smaller than zero warning @@@@@@@@@@@"
-                    #task_losses[batch_index] = 0
-
-            # Penalty - if this is the last segmnet of the prediction, and the size
-            # of the prediction is different from the size of the gold segmentations:
-            #if new_y == gold_segmentations[batch_index][-1] and ((predicted_len+1) != gold_len):
-            #    task_losses[batch_index] += 20 * abs(predicted_len + 1 - gold_len)
-
         return task_losses
 
     def get_task_loss(self, pred_segmentations, gold_segmentations):
@@ -346,15 +330,6 @@ class SpeechSegmentor(nn.Module):
                 min_dist = min(abs(y - x) for x in current_gold_seg)
 
                 task_losses[batch_index] += max(0, min_dist - 3)
-
-            # for i,y in enumerate(current_gold_seg):
-            #     min_dist = min(abs(y - x) for x in current_pred_seg)
-            #     task_losses[batch_index] += max(0, min_dist - 3)
-
-            # print current_pred_seg
-            # print current_gold_seg
-            # print task_losses[batch_index]
-            # exit()
 
         return task_losses
 
@@ -404,8 +379,12 @@ class SpeechSegmentor(nn.Module):
             start_index = max(0, i-MAX_SEGMENT_SIZE)
             for j in range(start_index, i):
                 current_scores[:, j-start_index] = best_scores[:, j] + self.get_local_score(batch, j, i)[:, 0].data
-                # if gold_seg is not None:                
-                #     current_scores[:, j-start_index] += 0.01*self.get_local_task_loss(segmentations, gold_seg, j, i) 
+                # Add local task loss
+                if self.use_task_loss and gold_seg is not None:
+                    segment_task_loss = self.get_local_task_loss(segmentations, gold_seg, j, i)                
+                    if self.is_cuda:
+                        segment_task_loss = segment_task_loss.cuda()
+                    current_scores[:, j-start_index] += self.task_loss_coef * segment_task_loss 
         
             # Choose the best scores and their corresponding indexes
             max_scores, k = torch.max(current_scores, 1)
@@ -437,8 +416,12 @@ class SpeechSegmentor(nn.Module):
         final_scores = self.get_score(batch, final_segmentations)     
 
         # If gold seg' is given, add the task loss to the score (batch-wise)
-        # if gold_seg is not None:
-        #     final_scores += 0.01*Variable(self.get_task_loss(final_segmentations, gold_seg))
+        if self.use_task_loss and gold_seg is not None:
+	    task_loss = Variable(self.get_task_loss(final_segmentations, gold_seg))
+	    if self.is_cuda:
+		task_loss = task_loss.cuda()
+            final_scores += self.task_loss_coef * task_loss
+
         return final_segmentations, final_scores
 
     def store_params(self, fpath):
