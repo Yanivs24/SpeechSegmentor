@@ -33,8 +33,8 @@ class NotFoundRNNsError(Exception):
 
 class SpeechSegmentor(nn.Module):
     def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE,
-                 rnn_output_dim=100, sum_mlp_hid_dims=(200, 200),
-                 output_mlp_hid_dim=200, is_cuda=True, use_srnn=False,
+                 rnn_output_dim=50, sum_mlp_hid_dims=(100, 100),
+                 output_mlp_hid_dim=100, is_cuda=True, use_srnn=False,
                  use_task_loss=False, task_loss_coef=0.01, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
@@ -55,10 +55,10 @@ class SpeechSegmentor(nn.Module):
         # BiLSTM (2D LSTM)
         self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.3)
 
-        # Forward RNN
+        # Forward RNN (for segmental RNN)
         self.RNN_F = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
 
-        # Backward RNN
+        # Backward RNN (for segmental RNN)
         self.RNN_B = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
 
         if self.SUM_MODE:
@@ -239,7 +239,7 @@ class SpeechSegmentor(nn.Module):
 
                 # Concatenate the BiRNNs with the MLP of the RNNs sum - 
                 # this is the actual Phi function
-                features = torch.cat((birnn_y_start, birnn_y_end, birnn_sum),  
+                features = torch.cat((birnn_y_start, birnn_y_end, self.mlp_sum_layer(birnn_sum)),  
                                       dim=1)
 
             else:         
@@ -417,9 +417,9 @@ class SpeechSegmentor(nn.Module):
 
         # If gold seg' is given, add the task loss to the score (batch-wise)
         if self.use_task_loss and gold_seg is not None:
-	    task_loss = Variable(self.get_task_loss(final_segmentations, gold_seg))
-	    if self.is_cuda:
-		task_loss = task_loss.cuda()
+            task_loss = Variable(self.get_task_loss(final_segmentations, gold_seg))
+            if self.is_cuda:
+                task_loss = task_loss.cuda()
             final_scores += self.task_loss_coef * task_loss
 
         return final_segmentations, final_scores

@@ -112,11 +112,11 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             start_time = time.time()
             # Structural loss
-	    if use_taskloss:
-            	batch_loss = pred_scores - gold_scores
+            if use_taskloss:
+                batch_loss = pred_scores - gold_scores
             # Hinge loss with margin (ReLU to zero out negative losses)
-	    else:
-            	batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
+            else:
+                batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
 
             loss = torch.mean(batch_loss)
             print "Batch losses: ", batch_loss
