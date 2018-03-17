@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
+from collections import OrderedDict
 
 # Max length of segment - in indexes
 MAX_SEGMENT_SIZE = 70
@@ -53,7 +54,7 @@ class SpeechSegmentor(nn.Module):
         # Network parameters:
 
         # BiLSTM (2D LSTM)
-        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.3)
+        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.0)
 
         # Forward RNN (for segmental RNN)
         self.RNN_F = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
@@ -269,7 +270,7 @@ class SpeechSegmentor(nn.Module):
         # Get the scalar score
         return self.mlp_output_layer(features)
 
-    def get_score(self, batch, segmentations):
+    def get_score(self, batch, lengths, segmentations):
         '''
         Get the score of the given segmentations of the sequences in 'batch'.
 
@@ -287,35 +288,37 @@ class SpeechSegmentor(nn.Module):
 
         batch_size = batch.size(0)
 
-        scores = Variable(torch.zeros(batch_size, 1))
+        scores = Variable(torch.zeros(batch_size))
         if self.is_cuda:
             scores = scores.cuda()
 
         for batch_ind, seg in enumerate(segmentations):
-            local_scores = [self.get_local_score(batch, seg[i], seg[i+1])[batch_ind] for i in range(len(seg)-1)]
+            last_index = lengths[batch_ind].data.cpu().numpy()[0] - 1
+            # Add segment boundaries
+            full_seg = [0] + list(seg) + [last_index]
+            # Remove duplicates
+            full_seg = OrderedDict((x, True) for x in full_seg).keys()
+            local_scores = [self.get_local_score(batch, full_seg[i], full_seg[i+1])[batch_ind] for i in range(len(full_seg)-1)]
             scores[batch_ind] = sum(local_scores)
 
         return scores
 
-    def get_local_task_loss(self, pred_segmentations, gold_segmentations, prev_y, new_y):
+    def local_task_loss(self, pred_y, batch_gold_y, tolerance=2):
+        ''' 
+        Get the distance from the label new_y from the batch labels
+        Parameters:
+            pred_y: A scalar - the predicted point
+            batch_gold_y: A 1D tensor of the corresponding batch labels
+            tolerance: Tolerance value for the loss
+        ''' 
 
-        batch_size = len(pred_segmentations)
+        # get the distance with a tolerance parameter
+        distances = torch.abs(batch_gold_y-pred_y) - tolerance
+        distances[distances<0] = 0
 
-        task_losses = torch.zeros(batch_size)
+        return distances
 
-        # Get distance of the new index for each element in the batch
-        for batch_index in range(batch_size):
-
-            # Amount of predicted points so far
-            gold_seg = gold_segmentations[batch_index]
-
-            # get the distance from the closest point to new_y
-            min_dist = min(abs(new_y - x) for x in gold_seg)
-            task_losses[batch_index] = max(0, min_dist - 3)
-
-        return task_losses
-
-    def get_task_loss(self, pred_segmentations, gold_segmentations):
+    def get_task_loss(self, pred_segmentations, gold_segmentations, tolerance=2):
 
         batch_size = len(pred_segmentations)
         task_losses = torch.zeros(batch_size)
@@ -325,15 +328,14 @@ class SpeechSegmentor(nn.Module):
             current_pred_seg = pred_segmentations[batch_index]
             current_gold_seg = gold_segmentations[batch_index]
 
-            for i,y in enumerate(current_pred_seg):
-
-                min_dist = min(abs(y - x) for x in current_gold_seg)
-
-                task_losses[batch_index] += max(0, min_dist - 3)
+            # The sequences should be of the same length
+            assert(len(current_pred_seg) == len(current_gold_seg))
+            for i in range(len(current_pred_seg)):
+                task_losses[batch_index] += max(0, abs(current_pred_seg[i] - current_gold_seg[i]) - tolerance)
 
         return task_losses
 
-    def forward(self, batch, lengths, gold_seg=None):
+    def forward(self, batch, lengths, k=None, gold_seg=None):
         '''
         Get the segmentation with the highest score using a practical dynamic
         programming algorithm.
@@ -341,6 +343,8 @@ class SpeechSegmentor(nn.Module):
         Parameters:
             batch :     A 3D torch tensor: (batch_size, sequence_size, input_size)
             lengths:    A 1D tensor containing the lengths of the batch sequences
+            [k]:        Num of segmentations. If not given, we will perform a dynamic
+                        programming search containing all possible amounts of segmentation
             [gold_seg]: A python list containing batch_size lists with the gold
                         segmentations. If given, we will return the best segmentation
                         excluding the gold one, for the structural hinge loss with 
@@ -348,7 +352,7 @@ class SpeechSegmentor(nn.Module):
                         "Simple and accurate dependency parsing using bidirectional LSTM feature representations).
 
         Notes:
-            The algorithm complexity is O(n**2)
+            The algorithm complexity is O(kn**2) if k is known and O(n**2) otherwise
         '''
     
         # First, calculate all the possible segment-RNNs or sum-RNNs of the sequences in batch
@@ -358,6 +362,160 @@ class SpeechSegmentor(nn.Module):
         else:
             self.calc_all_rnns(batch)
         print("calc_all_rnns: %s seconds ---" % (time.time() - start_time))
+
+        batch_size = batch.size(0)
+        max_length = batch.size(1)
+
+        #################### DEBUG - brute-force k=2 #################
+        # print gold_seg
+        # # K=2 case - simply go over all options
+        # best_scores = np.empty(batch_size)
+        # best_scores.fill(-np.inf)
+        # best_segmentations = torch.zeros(batch_size, 2)
+        # for i in range(1, max_length):
+        #     #start_index = max(0, i-MAX_SEGMENT_SIZE)
+        #     for j in range(i):
+        #         current_seg = [(j, i)] * batch_size
+        #         current_scores = self.get_score(batch, lengths, current_seg).data.numpy() + 0.01*self.get_task_loss(current_seg, gold_seg).numpy()
+        #         for t in range(batch_size):
+        #             last_index = lengths[t].data.cpu().numpy()[0] - 1
+        #             # Not in range
+        #             if (j > last_index) or (i > last_index):
+        #                 continue
+        #             if current_scores[t] > best_scores[t]:
+        #                best_scores[t] = current_scores[t]
+        #                best_segmentations[t] = torch.FloatTensor([j, i])
+
+        # print 'Brute force best seg:', best_segmentations
+        # print 'Brute force best score:', best_scores
+       #################### END OF DEBUG  ###########################
+
+        # Perform infernece when k (number of segments) is given
+        if k is not None:
+            # Get the scores of all the possible segments
+            local_scores = Variable(torch.zeros(batch_size, max_length, max_length))
+            if self.is_cuda:
+                local_scores = local_scores.cuda()
+            for i in range(1, max_length):
+                for j in range(i):
+                    local_scores[:, j, i] = self.get_local_score(batch, j, i)
+
+            # Prepare labels
+            if gold_seg is not None:
+                gold_labels = torch.zeros(batch_size, k)
+                for i in range(batch_size):
+                    gold_labels[i] = torch.FloatTensor(gold_seg[i])
+            else:
+                gold_labels = None
+
+            # Perform the inference
+            pred_seg = self.exact_inference(local_scores, lengths, k, gold_labels)
+
+        # Perform infernece when k is not known 
+        else:
+            pred_seg = self.broad_inference(batch, lengths, gold_seg)
+
+        # Get the scores of the chosen segmentations 
+        final_scores = self.get_score(batch, lengths, pred_seg)
+
+        # If gold seg' is given, add the task loss to the score (batch-wise)
+        if gold_seg is not None and self.use_task_loss:
+            task_loss = Variable(self.get_task_loss(pred_seg, gold_seg))
+            if self.is_cuda:
+                task_loss = task_loss.cuda()
+            final_scores += self.task_loss_coef * task_loss
+   
+        return pred_seg, final_scores
+
+    def exact_inference(self, local_scores, lengths, k, gold_labels=None):
+        '''
+        Apply dynamic programming algorithm for finding the best segmentation when
+        k (the number of segments) is known.
+
+        Parameters:
+            local_scores:  A 3D tensor containing the precalculated scores for each possible 
+                           segment. Dims: (batch_size, sequence_size, sequence_size)
+            k:             Scalar - number of onsets (labels)
+            [gold_labels]: A 2D tensor containing the gold labels. If given we will perform
+                           loss augmented inference. Otherwise, regular inference.
+                           Dims: (batch_size, k)
+        '''
+
+        batch_size = local_scores.size(0)
+        n = local_scores.size(1)
+        # Convert from time-points (labels) to num of segments
+        num_of_segments = k + 1
+
+        M = np.zeros((batch_size, num_of_segments, n))
+        M_idcs = np.zeros((batch_size, num_of_segments, n))
+        M.fill(-np.inf)
+        onsets = np.zeros((batch_size, num_of_segments-1))
+
+        # Initialization - zero segments cases (the whole sequence)
+        for i in range(1, n):
+            s = local_scores[:, 0, i]
+            M[:, 0, i] = s.data.numpy()
+
+        # To allow the first point to be zero
+        M[:, 0, 0] = np.zeros(batch_size)
+
+        # recursion - loop over all the segments
+        for i in range(1, num_of_segments):
+            # loop over possible onsets for the i+1 segment
+            for j in range(i, n):
+                best_indexes =  np.empty(batch_size)
+                best_indexes.fill(-1)
+                max_scores = np.empty(batch_size)
+                max_scores.fill(-np.inf)
+                # loop over possible onsets for the ith segment
+                for t in range(j):  
+                    s = local_scores[:, t, j]
+
+                    # perform loss augmented inference or not
+                    if gold_labels is not None:
+                        current_score = M[:, i - 1, t] + s.data.numpy() + 0.01*self.local_task_loss(t, gold_labels[:, i-1]).numpy()
+                    else:
+                        current_score = M[:, i - 1, t] + s.data.numpy()
+
+                    # find the max values
+                    bigger_inds = current_score > max_scores
+                    best_indexes[bigger_inds] = t
+                    max_scores = np.maximum(max_scores, current_score)
+
+                # memorization
+                M[:, i, j] = max_scores
+                M_idcs[:, i, j] = best_indexes
+            
+
+        # back-tracking - for each element in the batch separately
+        for i in range(batch_size):
+            last_index = lengths[i].data.cpu().numpy()[0] - 1
+            print 'best score: ', M[i, num_of_segments-1, last_index]
+            onsets[i,-1] = M_idcs[i, num_of_segments - 1, last_index]
+            for j in range(1, num_of_segments - 1):
+                onsets[i, -1 - j] = M_idcs[i,num_of_segments - j - 1, int(onsets[i,-j])]
+
+        print 'best seg: ', onsets
+        #import pdb; pdb.set_trace()
+        #exit()
+        return onsets
+
+    def broad_inference(self, batch, lengths, gold_seg=None):
+        '''
+        Apply dynamic programming algorithm for finding the best segmentation when
+        (k) the number of segments is unknown.
+
+        Parameters:
+            batch :     A 3D torch tensor: (batch_size, sequence_size, input_size)
+            lengths:    A 1D tensor containing the lengths of the batch sequences
+            [gold_seg]: A python list containing batch_size lists with the gold
+                        segmentations. If given, we will return the best segmentation
+                        excluding the gold one, for the structural hinge loss with 
+                        margin algorithm (see Kiperwasser, Eliyahu, and Yoav Goldberg
+                        "Simple and accurate dependency parsing using bidirectional LSTM feature representations).
+        Notes:
+            The algorithm complexity is O(n**2)
+        '''
 
         batch_size = batch.size(0)
         max_length = batch.size(1)
@@ -379,9 +537,10 @@ class SpeechSegmentor(nn.Module):
             start_index = max(0, i-MAX_SEGMENT_SIZE)
             for j in range(start_index, i):
                 current_scores[:, j-start_index] = best_scores[:, j] + self.get_local_score(batch, j, i)[:, 0].data
+                #current_scores[:, j-start_index] = best_scores[:, j] + local_scores[:, j, i].data
                 # Add local task loss
                 if self.use_task_loss and gold_seg is not None:
-                    segment_task_loss = self.get_local_task_loss(segmentations, gold_seg, j, i)                
+                    segment_task_loss = self.local_task_loss(segmentations, gold_seg, j, i)                
                     if self.is_cuda:
                         segment_task_loss = segment_task_loss.cuda()
                     current_scores[:, j-start_index] += self.task_loss_coef * segment_task_loss 
@@ -407,26 +566,19 @@ class SpeechSegmentor(nn.Module):
 
         # Get real segmentations according to the real lengths of the sequences 
         # in the batch
-        final_segmentations = []
+        pred_seg = []
         for i, seg in enumerate(segmentations):
             last_index = lengths[i].data.cpu().numpy()[0] - 1
-            final_segmentations.append(seg[last_index])
+            # Append the segmentation after removing sequence boundaries
+            pred_seg.append(seg[last_index][1:-1])
 
-        # Get the scores of the best segmentations 
-        final_scores = self.get_score(batch, final_segmentations)     
+        return pred_seg
 
-        # If gold seg' is given, add the task loss to the score (batch-wise)
-        if self.use_task_loss and gold_seg is not None:
-            task_loss = Variable(self.get_task_loss(final_segmentations, gold_seg))
-            if self.is_cuda:
-                task_loss = task_loss.cuda()
-            final_scores += self.task_loss_coef * task_loss
-
-        return final_segmentations, final_scores
 
     def store_params(self, fpath):
         torch.save(self.state_dict(), fpath)
 
     def load_params(self, fpath):
         self.load_state_dict(torch.load(fpath))
+
 

@@ -62,7 +62,8 @@ def convert_to_batches(data, batch_size, is_cuda):
 
     return batches
 
-def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations, is_cuda, patience, use_taskloss, params_file):
+def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations,
+                is_cuda, patience, use_k, use_taskloss, params_file):
     ''' 
     Train the network 
     '''
@@ -88,20 +89,25 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
         # Run train epochs
         train_closs = 0.0
-        train_accuracy = 0
         for batch, lengths, segmentations in train_batches:
 
             # Clear gradients (Pytorch accumulates gradients)
             model.zero_grad()
 
+            # Value to be sent to the model
+            real_k = len(segmentations[0]) if use_k else None
+
             # Forward pass on the network
             start_time = time.time()
-            pred_segmentations, pred_scores = model(batch, lengths, segmentations)
+            pred_segmentations, pred_scores = model(batch, 
+                                                    lengths, 
+                                                    k=real_k, 
+                                                    gold_seg=segmentations)
             print("Forward: %s seconds ---" % (time.time() - start_time))
 
             # Get gold scores
             start_time = time.time()
-            gold_scores = model.get_score(batch, segmentations)
+            gold_scores = model.get_score(batch, lengths, segmentations)
             print("Get score: %s seconds ---" % (time.time() - start_time))
 
             print 'pred score: %s' % str(pred_scores.data.cpu().numpy())
@@ -141,17 +147,22 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             # Clear gradients (Pytorch accumulates gradients)
             model.zero_grad()
 
+            # Value to be sent to the model
+            real_k = len(segmentations[0]) if use_k else None
+
             # Forward pass on the network
-            pred_segmentations, pred_scores = model(batch, lengths)
+            pred_segmentations, pred_scores = model(batch, 
+                                                    lengths,
+                                                    k=real_k)
 
             # Get gold scores
-            gold_scores = model.get_score(batch, segmentations)
+            gold_scores = model.get_score(batch, lengths, segmentations)
 
             # Update counters for precision and recall
             for gold_seg, pred_seg in zip(segmentations, pred_segmentations):
-                # Correct predictions (with 0.5 sec forgiveness collar)
+                # Correct predictions (with 2 indexes forgiveness collar)
                 for y in pred_seg:
-                    if filter(lambda t: abs(t-y) <= 2, gold_seg[1:-1]):
+                    if filter(lambda t: abs(t-y) <= 2, gold_seg):
                         dev_correct_counter += 1 
                 # Count boundaries                        
                 dev_gold_counter += len(gold_seg)
@@ -213,16 +224,21 @@ if __name__ == '__main__':
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
     parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
     parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=10, type=int)
-    parser.add_argument('--no-cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
+    parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     parser.add_argument('--use_task_loss', help='Train with strucutal loss with a specific task loss', action='store_true', default=False)
+    parser.add_argument('--use_k', help='Apply inference when k (# of segments) is known for each example', action='store_true', default=False)
     args = parser.parse_args()
 
-    args.is_cuda = not args.no_cuda and torch.cuda.is_available()
+    args.is_cuda = args.use_cuda and torch.cuda.is_available()
 
     if args.is_cuda:
         print '==> Training on GPU using cuda'
     else:
         print '==> Training on CPU'
+
+    # Always use task-loss when k in known
+    if args.use_k:
+        args.use_task_loss = True
     
     if args.dataset == 'sb':
         #print '==> Using switchboard dataset'
@@ -241,7 +257,7 @@ if __name__ == '__main__':
     # Synthetic simple dataset for debugging
     elif args.dataset == 'toy':
         print '==> Using toy dataset'
-        dataset = toy_dataset(dataset_size=4000, seq_len=100)
+        dataset = toy_dataset(dataset_size=1000, seq_len=100)
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 
@@ -264,6 +280,7 @@ if __name__ == '__main__':
                 args.num_iters,
                 args.is_cuda,
                 args.patience,
+                args.use_k,
                 args.use_task_loss,
                 args.params_path)
 

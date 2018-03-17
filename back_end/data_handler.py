@@ -343,7 +343,7 @@ def load_preaspiration(dataset_path):
         speech_seq = flat_seq.view(-1, PREASPIRATION_NUM_OF_FEATURES)
 
         # append to the dataset (for segmentation task)
-        dataset.append((speech_seq, (0, left_label, right_label, len(speech_seq)-1)))
+        dataset.append((speech_seq, (left_label, right_label)))
     
     return dataset
 
@@ -355,11 +355,15 @@ def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
         ex = torch.zeros(seq_len, 1)
 
         # Get random segmentation
-        seg_size = np.random.randint(max_seg_size)
-        seg = [0] + sorted(set(np.random.randint(1, seq_len-1, seg_size))) + [seq_len-1]
+        seg_size = np.random.randint(1, max_seg_size)
+        #seg_size = 2
+        seg = sorted(set(np.random.randint(1, seq_len-1, seg_size)))
+        #if len(seg) != 2:
+        #    continue
 
-        for i in range(len(seg)-1):
-            ex[seg[i]:seg[i+1]] = i
+        full_seg = [0] + seg + [seq_len-1]
+        for i in range(len(full_seg)-1):
+            ex[full_seg[i]:full_seg[i+1]] = i
         ex[seq_len-1] = i
 
         dataset.append((ex, seg))
