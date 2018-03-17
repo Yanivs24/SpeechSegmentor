@@ -6,7 +6,7 @@ import numpy as np
 from collections import OrderedDict
 
 # Max length of segment - in indexes
-MAX_SEGMENT_SIZE = 70
+MAX_SEGMENT_SIZE = 80
 DEFAULT_FEATURE_SIZE = 20
 
 
@@ -366,30 +366,6 @@ class SpeechSegmentor(nn.Module):
         batch_size = batch.size(0)
         max_length = batch.size(1)
 
-        #################### DEBUG - brute-force k=2 #################
-        # print gold_seg
-        # # K=2 case - simply go over all options
-        # best_scores = np.empty(batch_size)
-        # best_scores.fill(-np.inf)
-        # best_segmentations = torch.zeros(batch_size, 2)
-        # for i in range(1, max_length):
-        #     #start_index = max(0, i-MAX_SEGMENT_SIZE)
-        #     for j in range(i):
-        #         current_seg = [(j, i)] * batch_size
-        #         current_scores = self.get_score(batch, lengths, current_seg).data.numpy() + 0.01*self.get_task_loss(current_seg, gold_seg).numpy()
-        #         for t in range(batch_size):
-        #             last_index = lengths[t].data.cpu().numpy()[0] - 1
-        #             # Not in range
-        #             if (j > last_index) or (i > last_index):
-        #                 continue
-        #             if current_scores[t] > best_scores[t]:
-        #                best_scores[t] = current_scores[t]
-        #                best_segmentations[t] = torch.FloatTensor([j, i])
-
-        # print 'Brute force best seg:', best_segmentations
-        # print 'Brute force best score:', best_scores
-       #################### END OF DEBUG  ###########################
-
         # Perform infernece when k (number of segments) is given
         if k is not None:
             # Get the scores of all the possible segments
@@ -397,7 +373,8 @@ class SpeechSegmentor(nn.Module):
             if self.is_cuda:
                 local_scores = local_scores.cuda()
             for i in range(1, max_length):
-                for j in range(i):
+                start_index = max(0, i-MAX_SEGMENT_SIZE)
+                for j in range(start_index, i):
                     local_scores[:, j, i] = self.get_local_score(batch, j, i)
 
             # Prepare labels
@@ -451,8 +428,8 @@ class SpeechSegmentor(nn.Module):
         M.fill(-np.inf)
         onsets = np.zeros((batch_size, num_of_segments-1))
 
-        # Initialization - zero segments cases (the whole sequence)
-        for i in range(1, n):
+        # Initialization - zero segment cases (the whole sequence)
+        for i in range(1, min(MAX_SEGMENT_SIZE, n)):
             s = local_scores[:, 0, i]
             M[:, 0, i] = s.data.numpy()
 
@@ -467,13 +444,14 @@ class SpeechSegmentor(nn.Module):
                 best_indexes.fill(-1)
                 max_scores = np.empty(batch_size)
                 max_scores.fill(-np.inf)
+                start_index = max(0, j-MAX_SEGMENT_SIZE)
                 # loop over possible onsets for the ith segment
-                for t in range(j):  
+                for t in range(start_index, j):  
                     s = local_scores[:, t, j]
 
                     # perform loss augmented inference or not
                     if gold_labels is not None:
-                        current_score = M[:, i - 1, t] + s.data.numpy() + 0.01*self.local_task_loss(t, gold_labels[:, i-1]).numpy()
+                        current_score = M[:, i - 1, t] + s.data.numpy() + self.task_loss_coef*self.local_task_loss(t, gold_labels[:, i-1]).numpy()
                     else:
                         current_score = M[:, i - 1, t] + s.data.numpy()
 
@@ -485,7 +463,6 @@ class SpeechSegmentor(nn.Module):
                 # memorization
                 M[:, i, j] = max_scores
                 M_idcs[:, i, j] = best_indexes
-            
 
         # back-tracking - for each element in the batch separately
         for i in range(batch_size):
@@ -495,15 +472,12 @@ class SpeechSegmentor(nn.Module):
             for j in range(1, num_of_segments - 1):
                 onsets[i, -1 - j] = M_idcs[i,num_of_segments - j - 1, int(onsets[i,-j])]
 
-        print 'best seg: ', onsets
-        #import pdb; pdb.set_trace()
-        #exit()
         return onsets
 
     def broad_inference(self, batch, lengths, gold_seg=None):
         '''
         Apply dynamic programming algorithm for finding the best segmentation when
-        (k) the number of segments is unknown.
+        k (the number of segments) is unknown.
 
         Parameters:
             batch :     A 3D torch tensor: (batch_size, sequence_size, input_size)
@@ -573,7 +547,6 @@ class SpeechSegmentor(nn.Module):
             pred_seg.append(seg[last_index][1:-1])
 
         return pred_seg
-
 
     def store_params(self, fpath):
         torch.save(self.state_dict(), fpath)

@@ -356,10 +356,10 @@ def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
 
         # Get random segmentation
         seg_size = np.random.randint(1, max_seg_size)
-        #seg_size = 2
+        seg_size = 5
         seg = sorted(set(np.random.randint(1, seq_len-1, seg_size)))
-        #if len(seg) != 2:
-        #    continue
+        if len(seg) != 5:
+            continue
 
         full_seg = [0] + seg + [seq_len-1]
         for i in range(len(full_seg)-1):
