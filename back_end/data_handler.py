@@ -315,7 +315,6 @@ def load_preaspiration(dataset_path):
         lines = f.readlines()
 
     raw_dataset = [l.strip().split(',') for l in lines]
-    print 'Got %s training examples!' % (len(raw_dataset))
 
     dataset = []
     for ex in raw_dataset:

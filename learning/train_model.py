@@ -15,7 +15,7 @@ from model.model import SpeechSegmentor
 sys.path.append('./back_end')
 from data_handler import switchboard_dataset, switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset
 
-DEV_SET_PROPORTION        = 0.1
+DEV_SET_PROPORTION        = 0.15
 
 
 def convert_to_batches(data, batch_size, is_cuda):
@@ -82,7 +82,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     consecutive_no_improve = 0
     print 'Start training the model..'
     for ITER in xrange(iterations):
-        print '-------- Epoch #%d --------' % ITER
+        print '-------- Epoch #%d --------' % (ITER+1)
 
         random.shuffle(train_batches)
         model.train()
@@ -125,7 +125,6 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                 batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
 
             loss = torch.mean(batch_loss)
-            print "Batch losses: ", batch_loss
             print "The avg loss is %s" % str(loss)
             train_closs += float(loss.data[0])
 
@@ -139,6 +138,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
         # Check performance on the dev set
         dev_closs = 0.0
+        dev_ctaskloss = 0
         dev_correct_counter = 0
         dev_gold_counter    = 0
         dev_pred_counter    = 0
@@ -177,26 +177,33 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             loss = torch.mean(batch_loss)
 
+            taskloss = torch.mean(model.get_task_loss(pred_segmentations, segmentations))
+
             print segmentations
             print '------------------------------------------------------------'
             print pred_segmentations
 
             print "The dev avg loss is %s" % str(loss)
+            print "The dev avg taskloss is %s" % str(taskloss)
             dev_closs += float(loss.data[0])
+            dev_ctaskloss += taskloss
 
         # Average train and dev losses
         avg_train_loss = train_closs / len(train_batches)
         avg_dev_loss = dev_closs / len(dev_batches)
+        avg_dev_taskloss = dev_ctaskloss / len(dev_batches)
 
         print "#####################################################################"
+        print "Results for Epoch #%d" % (ITER+1)
         print "Train avg loss %s | Dev avg loss: %s" % (avg_train_loss, avg_dev_loss)
+        print "Dev avg taskloss: %f" % avg_dev_taskloss
         print "Dev precision: %f" % (float(dev_correct_counter) / dev_pred_counter)
         print "Dev recall: %f" % (float(dev_correct_counter) / dev_gold_counter)
         print "#####################################################################"
 
-        # check if it's the best (minimum) loss so far
-        if avg_dev_loss < best_dev_loss:
-            best_dev_loss = avg_dev_loss
+        # check if it's the best (minimum) task loss so far
+        if avg_dev_taskloss < best_dev_loss:
+            best_dev_loss = avg_dev_taskloss
             consecutive_no_improve = 0
             # store parameters after each loss improvement
             print 'Best dev loss so far - storing parameters in %s' % params_file
@@ -209,7 +216,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             print 'No loss improvements - stop training!'
             return
 
-    print 'Learning process has finished!'
+    print 'Tranining process has finished!'
 
 
 if __name__ == '__main__':
@@ -223,10 +230,12 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', help='The learning rate', default=0.00001, type=float)
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
     parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
-    parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=10, type=int)
+    parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=5, type=int)
     parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
-    parser.add_argument('--use_task_loss', help='Train with strucutal loss with a specific task loss', action='store_true', default=False)
-    parser.add_argument('--use_k', help='Apply inference when k (# of segments) is known for each example', action='store_true', default=False)
+    parser.add_argument("--init_params", help="Start training from a set of pretrained parameters", default='')
+    parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=False)
+    parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
+    parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.001, type=float)
     args = parser.parse_args()
 
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
@@ -269,18 +278,21 @@ if __name__ == '__main__':
     dev_data   = dataset[train_set_size:]
 
     # create a new model 
-    model = SpeechSegmentor(rnn_input_dim=dataset.input_size, is_cuda=args.is_cuda, use_task_loss=args.use_task_loss)
+    model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
+                            load_from_file=args.init_params,
+                            is_cuda=args.is_cuda, 
+                            use_task_loss=args.use_task_loss,
+                            task_loss_coef=args.task_loss_coef)
 
     # train the model
-    train_model(model,
-                train_data,
-                dev_data,  
-                args.learning_rate,
-                args.batch_size,
-                args.num_iters,
-                args.is_cuda,
-                args.patience,
-                args.use_k,
-                args.use_task_loss,
-                args.params_path)
-
+    train_model(model=model,
+                train_data=train_data,
+                dev_data=dev_data,  
+                learning_rate=args.learning_rate,
+                batch_size=args.batch_size,
+                iterations=args.num_iters,
+                is_cuda=args.is_cuda,
+                patience=args.patience,
+                use_k=args.use_k,
+                use_taskloss=args.use_task_loss,
+                params_file=args.params_path)

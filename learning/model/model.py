@@ -6,7 +6,7 @@ import numpy as np
 from collections import OrderedDict
 
 # Max length of segment - in indexes
-MAX_SEGMENT_SIZE = 80
+MAX_SEGMENT_SIZE = 200
 DEFAULT_FEATURE_SIZE = 20
 
 
@@ -36,7 +36,7 @@ class SpeechSegmentor(nn.Module):
     def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE,
                  rnn_output_dim=50, sum_mlp_hid_dims=(100, 100),
                  output_mlp_hid_dim=100, is_cuda=True, use_srnn=False,
-                 use_task_loss=False, task_loss_coef=0.01, load_from_file=''):
+                 use_task_loss=False, task_loss_coef=0.001, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 
@@ -54,7 +54,7 @@ class SpeechSegmentor(nn.Module):
         # Network parameters:
 
         # BiLSTM (2D LSTM)
-        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.0)
+        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.3)
 
         # Forward RNN (for segmental RNN)
         self.RNN_F = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
@@ -431,7 +431,7 @@ class SpeechSegmentor(nn.Module):
         # Initialization - zero segment cases (the whole sequence)
         for i in range(1, min(MAX_SEGMENT_SIZE, n)):
             s = local_scores[:, 0, i]
-            M[:, 0, i] = s.data.numpy()
+            M[:, 0, i] = s.data.cpu().numpy()
 
         # To allow the first point to be zero
         M[:, 0, 0] = np.zeros(batch_size)
@@ -451,9 +451,9 @@ class SpeechSegmentor(nn.Module):
 
                     # perform loss augmented inference or not
                     if gold_labels is not None:
-                        current_score = M[:, i - 1, t] + s.data.numpy() + self.task_loss_coef*self.local_task_loss(t, gold_labels[:, i-1]).numpy()
+                        current_score = M[:, i - 1, t] + s.data.cpu().numpy() + self.task_loss_coef*self.local_task_loss(t, gold_labels[:, i-1]).numpy()
                     else:
-                        current_score = M[:, i - 1, t] + s.data.numpy()
+                        current_score = M[:, i - 1, t] + s.data.cpu().numpy()
 
                     # find the max values
                     bigger_inds = current_score > max_scores

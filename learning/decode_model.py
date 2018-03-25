@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import sys
-import os
 
 from torch.autograd import Variable
 import torch
@@ -31,63 +30,91 @@ def decode_wav(model, wav_path, sample_rate=16000, win_size=100):
     batch, lengths = get_mfcc_features(wav_path, sample_rate, win_size)
     return model(batch, lengths)
 
-def convert_to_model_format(features, is_cuda):
-    ''' 
-    Reshape a feature vector to a 3d tensor (batch) with one sequence 
-    TODO: use bigger batches as in training
-    '''
+def convert_to_batches(data, batch_size, is_cuda):
+    """
+    Data: list of tuples each from the format: (tensor, label)
+          where the tensor should be 2d contatining features
+          for each time frame.  
 
-    torch_batch = Variable(features.view(1, features.size(0), -1))
-    lengths = Variable(torch.LongTensor([torch_batch.size(1)]))
+    Output: A list contating tuples from the format: (batch_tensor, lengths, labels)      
+    """
 
-    if is_cuda:
-        torch_batch = torch_batch.cuda()
-        lengths = lengths.cuda()
+    # Loop over the examples and gather them into padded batches
+    batches = []
+    for i in range(0, len(data), batch_size):
 
-    return torch_batch, lengths
+        # Get tensors and labels
+        tensors = [ex[0] for ex in data[i:i+batch_size]]
+        labels = [ex[1] for ex in data[i:i+batch_size]]
 
+        # Get sizes
+        current_batch_size = len(tensors)
+        max_length = max([ten.size(0) for ten in tensors])
+        features_length = tensors[0].size(1)
 
-def decode_data(model, dataset, is_cuda):
+        # Get a padded batch tensor
+        padded_batch = torch.zeros(current_batch_size, max_length, features_length)
 
-    # Loop over all dataset examples
+        lengths = []
+        for j,ten in enumerate(tensors):
+            current_length = ten.size(0)
+            padded_batch[j] = torch.cat([ten, torch.zeros(max_length - current_length, features_length)])
+            lengths.append(current_length)
+
+        # Convert to variables
+        padded_batch = Variable(padded_batch)
+        lengths = Variable(torch.LongTensor(lengths))
+
+        if is_cuda:
+            padded_batch = padded_batch.cuda()
+            lengths = lengths.cuda()
+
+        # Add it to the batches list along with the real lengths and labels
+        batches.append((padded_batch, lengths, labels))
+
+    return batches
+
+def decode_data(model, dataset, batch_size, is_cuda, use_k):
+
     left_err = 0
     right_err = 0
     X = []
     Y = []
-    for features, labels in dataset:
 
-        # Convert it to a batch tensor with one object (TODO: use a bigger batche)
-        batch, lengths = convert_to_model_format(features, is_cuda) 
+    # Convert data to torch batches and loop over them
+    batches = convert_to_batches(dataset, batch_size, is_cuda)
+    for batch, lengths, segmentations in batches:
+
+        # Value to be sent to the model
+        real_k = len(dataset[0]) if use_k else None 
 
         # Predict using the model
-        segmentations, _ = model(batch, lengths)
-        segmentations = segmentations[0]
-         
-        print 'Predicted:', segmentations
-        print 'Gold:', labels
+        preds, _ = model(batch, lengths, real_k)
+        
+        # Loop over the predictions of the batch
+        for pred, gold in zip(preds, segmentations):
+            print 'Predicted:', pred
+            print 'Gold:', gold
 
-        if len(segmentations) != len(labels):
-            print 'Bad length - the predicted length is %d while the gold length is %d' %  \
-                                                   (len(segmentations), len(labels))
-            continue
+            # Relevant for predictions where k is unknown
+            if len(pred) != len(gold):
+                print 'Bad length - the predicted length is %d while the gold length is %d' %  \
+                                                       (len(pred), len(gold))
+                continue
 
-        # Ignore the fixed boundaries:
-        predicted_labels = segmentations[1:-1]
-        gold_labels      = labels[1:-1]
+            # Store event's duration
+            X.append(gold[1]-gold[0])
+            Y.append(pred[1]-pred[0])
 
-        # store pre-aspiration durations
-        X.append(gold_labels[1]-gold_labels[0])
-        Y.append(predicted_labels[1]-predicted_labels[0])
+            # not found - zeros vector
+            if pred[1] <= pred[0]:
+                print 'Warning - bad prediction: %s' % str(pred)
 
-        # not found - zeros vector
-        if predicted_labels[1] <= predicted_labels[0]:
-            print 'Warning - event has not found in: %s' % file
-            
-        left_err += np.abs(gold_labels[0]-predicted_labels[0])
-        right_err += np.abs(gold_labels[1]-predicted_labels[1])
+            left_err += np.abs(gold[0]-pred[0])
+            right_err += np.abs(gold[1]-pred[1])
 
-    print 'left_err: ',  float(left_err)/len(feature_files_list)
-    print 'right_err: ', float(right_err)/len(feature_files_list)
+    print 'left_err: ',  float(left_err)/len(dataset)
+    print 'right_err: ', float(right_err)/len(dataset)
 
     X = np.array(X)
     Y = np.array(Y)
@@ -114,10 +141,12 @@ if __name__ == '__main__':
     parser.add_argument("params_path", help="A path to a file containing the model parameters (after training)")
     parser.add_argument("decode_path", help="A path to a directory containing the extracted features for the decoding")
     parser.add_argument("--dataset", help="dataset/testset to be decoded: sb(switchboard)/pa/toy", default='pa')
-    parser.add_argument('--no-cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
+    parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
+    parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
+    parser.add_argument('--use_k', help='Apply inference when k (# of segments) is known for each example', action='store_true', default=False)
     args = parser.parse_args()
 
-    args.is_cuda = not args.no_cuda and torch.cuda.is_available()
+    args.is_cuda = args.use_cuda and torch.cuda.is_available()
 
     if args.is_cuda:
         print '==> Decoding on GPU using cuda'
@@ -144,5 +173,9 @@ if __name__ == '__main__':
                             load_from_file=args.params_path,
                             is_cuda=args.is_cuda)
 
-    # Decode the given files
-    decode_data(model, dataset, args.is_cuda)
+    # Decode the data
+    decode_data(model=model, 
+                dataset=dataset,
+                batch_size=args.batch_size,
+                is_cuda=args.is_cuda, 
+                use_k=args.use_k)
