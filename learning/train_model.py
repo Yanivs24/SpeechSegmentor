@@ -15,7 +15,7 @@ from model.model import SpeechSegmentor
 sys.path.append('./back_end')
 from data_handler import switchboard_dataset, switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset
 
-DEV_SET_PROPORTION        = 0.15
+DEV_SET_PROPORTION        = 0.3
 
 
 def convert_to_batches(data, batch_size, is_cuda):
@@ -73,7 +73,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     dev_batches   = convert_to_batches(dev_data, batch_size, is_cuda)
 
     # Use SGD optimizer
-    #optimizer = optim.SGD(model.parameters(), lr=learning_rate)
+    #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     # Use Adam optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
@@ -110,8 +110,6 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             gold_scores = model.get_score(batch, lengths, segmentations)
             print("Get score: %s seconds ---" % (time.time() - start_time))
 
-            print 'pred score: %s' % str(pred_scores.data.cpu().numpy())
-            print 'gold score: %s' % str(gold_scores.data.cpu().numpy())
             print segmentations
             print '------------------------------------------------------------'
             print pred_segmentations
@@ -227,7 +225,7 @@ if __name__ == '__main__':
     parser.add_argument("train_path", help="A path to the training set")
     parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
     parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy", default='sb')
-    parser.add_argument('--learning_rate', help='The learning rate', default=0.00001, type=float)
+    parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
     parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
     parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=5, type=int)

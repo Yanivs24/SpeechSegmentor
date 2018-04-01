@@ -54,7 +54,7 @@ class SpeechSegmentor(nn.Module):
         # Network parameters:
 
         # BiLSTM (2D LSTM)
-        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.3)
+        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.0)
 
         # Forward RNN (for segmental RNN)
         self.RNN_F = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
@@ -114,6 +114,8 @@ class SpeechSegmentor(nn.Module):
         out, hidden = self.BiRNN(packed_seq, hidden)
         out = unpack_and_unsort(out, sorted_idx)
 
+        # Store BiRNN output for later use
+        self.BiRNN_vals = out.clone()
         # Calc the accumulator of the output (i.e. self.BiRNN_sums[:,i,:] will be the sum of 
         # out[:, 0:i, :])
         self.BiRNN_sums = out.clone()
@@ -224,23 +226,20 @@ class SpeechSegmentor(nn.Module):
 
         try:
             if self.SUM_MODE:
+                # Get birnn sum over the segment
                 if y_start == 0:
-                    # Get birnn sum over the segment
                     birnn_sum = self.BiRNN_sums[:, y_end, :]
-                    # Get BiRNN(seq, y_start)
-                    birnn_y_start = self.BiRNN_sums[:, y_start, :]
                 else:
-                    # Get birnn sum over the segment
                     birnn_sum = self.BiRNN_sums[:, y_end, :] - self.BiRNN_sums[:, y_start-1, :]
-                    # Get BiRNN(seq, y_start)
-                    birnn_y_start = self.BiRNN_sums[:, y_start, :] - self.BiRNN_sums[:, y_start-1, :]
 
-                # Get BiRNN(seq, y_end)
-                birnn_y_end = self.BiRNN_sums[:, y_end, :] - self.BiRNN_sums[:, y_end-1, :]
+                birnn_y_start = self.BiRNN_vals[:, y_start, :]
+                birnn_y_end = self.BiRNN_vals[:, y_end, :]
 
                 # Concatenate the BiRNNs with the MLP of the RNNs sum - 
                 # this is the actual Phi function
-                features = torch.cat((birnn_y_start, birnn_y_end, self.mlp_sum_layer(birnn_sum)),  
+                features = torch.cat((birnn_y_start,
+                                      birnn_y_end,
+                                      self.mlp_sum_layer(birnn_sum)),   
                                       dim=1)
 
             else:         
@@ -467,7 +466,6 @@ class SpeechSegmentor(nn.Module):
         # back-tracking - for each element in the batch separately
         for i in range(batch_size):
             last_index = lengths[i].data.cpu().numpy()[0] - 1
-            print 'best score: ', M[i, num_of_segments-1, last_index]
             onsets[i,-1] = M_idcs[i, num_of_segments - 1, last_index]
             for j in range(1, num_of_segments - 1):
                 onsets[i, -1 - j] = M_idcs[i,num_of_segments - j - 1, int(onsets[i,-j])]
