@@ -13,12 +13,12 @@ from torch.autograd import Variable
 
 from model.model import SpeechSegmentor
 sys.path.append('./back_end')
-from data_handler import switchboard_dataset, switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset
+from data_handler import switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset, timit_dataset
 
 DEV_SET_PROPORTION        = 0.3
 
 
-def convert_to_batches(data, batch_size, is_cuda):
+def convert_to_batches(data, batch_size, is_cuda, fixed_k):
     """
     Data: list of tuples each from the format: (tensor, label)
           where the tensor should be 2d contatining features
@@ -27,21 +27,35 @@ def convert_to_batches(data, batch_size, is_cuda):
     Output: A list contating tuples from the format: (batch_tensor, lengths, labels)      
     """
 
+    num_of_examples = len(data)
+
     # Loop over the examples and gather them into padded batches
     batches = []
-    for i in range(0, len(data), batch_size):
+    i = 0
+    while i < num_of_examples:
+
+        # Gather examples with the same number of segments - k (batching can only work if
+        # k is fixed along the batch examples)
+        if fixed_k:
+            first_k = len(data[i][1])
+            count = 0
+            while (i+count < num_of_examples) and (first_k == len(data[i+count][1])):
+                count += 1
+
+            cur_batch_size = min(count, batch_size)
+        else:
+            cur_batch_size = min(num_of_examples-i, batch_size)
 
         # Get tensors and labels
-        tensors = [ex[0] for ex in data[i:i+batch_size]]
-        labels = [ex[1] for ex in data[i:i+batch_size]]
-
+        tensors = [ex[0] for ex in data[i:i+cur_batch_size]]
+        labels = [ex[1] for ex in data[i:i+cur_batch_size]]
+        
         # Get sizes
-        current_batch_size = len(tensors)
         max_length = max([ten.size(0) for ten in tensors])
         features_length = tensors[0].size(1)
 
         # Get a padded batch tensor
-        padded_batch = torch.zeros(current_batch_size, max_length, features_length)
+        padded_batch = torch.zeros(cur_batch_size, max_length, features_length)
 
         lengths = []
         for j,ten in enumerate(tensors):
@@ -60,6 +74,9 @@ def convert_to_batches(data, batch_size, is_cuda):
         # Add it to the batches list along with the real lengths and labels
         batches.append((padded_batch, lengths, labels))
 
+        # Progress i for the next batch
+        i += cur_batch_size
+
     return batches
 
 def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations,
@@ -69,8 +86,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     '''
 
     # Preprocess data into batches
-    train_batches = convert_to_batches(train_data, batch_size, is_cuda)
-    dev_batches   = convert_to_batches(dev_data, batch_size, is_cuda)
+    train_batches = convert_to_batches(train_data, batch_size, is_cuda, use_k)
+    dev_batches   = convert_to_batches(dev_data, batch_size, is_cuda, use_k)
 
     # Use SGD optimizer
     #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
@@ -224,7 +241,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("train_path", help="A path to the training set")
     parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
-    parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy", default='sb')
+    parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit", default='sb')
     parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
     parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
@@ -265,6 +282,9 @@ if __name__ == '__main__':
     elif args.dataset == 'toy':
         print '==> Using toy dataset'
         dataset = toy_dataset(dataset_size=1000, seq_len=100)
+    elif args.dataset == 'timit':
+        print '==> Using timit dataset'
+        dataset = timit_dataset(args.train_path)
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 

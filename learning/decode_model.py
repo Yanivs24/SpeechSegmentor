@@ -11,7 +11,7 @@ import torch
 from model.model import SpeechSegmentor
 sys.path.append('./back_end')
 from feature_extractor import extract_mfcc
-from data_handler import switchboard_dataset, switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset
+from data_handler import switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset, timit_dataset
 
 
 def get_mfcc_features(wav_path, sample_rate, win_size):
@@ -30,7 +30,7 @@ def decode_wav(model, wav_path, sample_rate=16000, win_size=100):
     batch, lengths = get_mfcc_features(wav_path, sample_rate, win_size)
     return model(batch, lengths)
 
-def convert_to_batches(data, batch_size, is_cuda):
+def convert_to_batches(data, batch_size, is_cuda, fixed_k):
     """
     Data: list of tuples each from the format: (tensor, label)
           where the tensor should be 2d contatining features
@@ -39,21 +39,35 @@ def convert_to_batches(data, batch_size, is_cuda):
     Output: A list contating tuples from the format: (batch_tensor, lengths, labels)      
     """
 
+    num_of_examples = len(data)
+
     # Loop over the examples and gather them into padded batches
     batches = []
-    for i in range(0, len(data), batch_size):
+    i = 0
+    while i < num_of_examples:
+
+        # Gather examples with the same number of segments - k (batching can only work if
+        # k is fixed along the batch examples)
+        if fixed_k:
+            first_k = len(data[i][1])
+            count = 0
+            while (i+count < num_of_examples) and (first_k == len(data[i+count][1])):
+                count += 1
+
+            cur_batch_size = min(count, batch_size)
+        else:
+            cur_batch_size = min(num_of_examples-i, batch_size)
 
         # Get tensors and labels
-        tensors = [ex[0] for ex in data[i:i+batch_size]]
-        labels = [ex[1] for ex in data[i:i+batch_size]]
-
+        tensors = [ex[0] for ex in data[i:i+cur_batch_size]]
+        labels = [ex[1] for ex in data[i:i+cur_batch_size]]
+        
         # Get sizes
-        current_batch_size = len(tensors)
         max_length = max([ten.size(0) for ten in tensors])
         features_length = tensors[0].size(1)
 
         # Get a padded batch tensor
-        padded_batch = torch.zeros(current_batch_size, max_length, features_length)
+        padded_batch = torch.zeros(cur_batch_size, max_length, features_length)
 
         lengths = []
         for j,ten in enumerate(tensors):
@@ -72,6 +86,9 @@ def convert_to_batches(data, batch_size, is_cuda):
         # Add it to the batches list along with the real lengths and labels
         batches.append((padded_batch, lengths, labels))
 
+        # Progress i for the next batch
+        i += cur_batch_size
+
     return batches
 
 def decode_data(model, dataset, batch_size, is_cuda, use_k):
@@ -82,11 +99,11 @@ def decode_data(model, dataset, batch_size, is_cuda, use_k):
     Y = []
 
     # Convert data to torch batches and loop over them
-    batches = convert_to_batches(dataset, batch_size, is_cuda)
+    batches = convert_to_batches(dataset, batch_size, is_cuda, use_k)
     for batch, lengths, segmentations in batches:
 
-        # Value to be sent to the model
-        real_k = len(dataset[0]) if use_k else None 
+        # K Value to be sent to the model
+        real_k = len(segmentations[0]) if use_k else None 
 
         # Predict using the model
         preds, _ = model(batch, lengths, real_k)
@@ -102,27 +119,32 @@ def decode_data(model, dataset, batch_size, is_cuda, use_k):
                                                        (len(pred), len(gold))
                 continue
 
-            # Store event's duration
-            X.append(gold[1]-gold[0])
-            Y.append(pred[1]-pred[0])
+            # Timit case (TODO: support all)
+            X.extend(gold)
+            Y.extend(pred)
 
-            # not found - zeros vector
-            if pred[1] <= pred[0]:
-                print 'Warning - bad prediction: %s' % str(pred)
+            # Preaspiration 
+            # # Store event's duration
+            # X.append(gold[1]-gold[0])
+            # Y.append(pred[1]-pred[0])
 
-            left_err += np.abs(gold[0]-pred[0])
-            right_err += np.abs(gold[1]-pred[1])
+            # # not found - zeros vector
+            # if pred[1] <= pred[0]:
+            #     print 'Warning - bad prediction: %s' % str(pred)
 
-    print 'left_err: ',  float(left_err)/len(dataset)
-    print 'right_err: ', float(right_err)/len(dataset)
+            # left_err += np.abs(gold[0]-pred[0])
+            # right_err += np.abs(gold[1]-pred[1])
+
+    #print 'left_err: ',  float(left_err)/len(dataset)
+    #print 'right_err: ', float(right_err)/len(dataset)
 
     X = np.array(X)
     Y = np.array(Y)
 
-    print "Mean of labeled/predicted preaspiration: %sms, %sms" % (str(np.mean(X)), str(np.mean(Y)))
-    print "Standard deviation of labeled/predicted preaspiration: %sms, %sms" % (str(np.std(X)), str(np.std(Y)))
-    print "max of labeled/predicted preaspiration: %sms, %sms" % (str(np.max(X)), str(np.max(Y)))
-    print "min of labeled/predicted preaspiration: %sms, %sms" % (str(np.min(X)), str(np.min(Y)))
+    # print "Mean of labeled/predicted preaspiration: %sms, %sms" % (str(np.mean(X)), str(np.mean(Y)))
+    # print "Standard deviation of labeled/predicted preaspiration: %sms, %sms" % (str(np.std(X)), str(np.std(Y)))
+    # print "max of labeled/predicted preaspiration: %sms, %sms" % (str(np.max(X)), str(np.max(Y)))
+    # print "min of labeled/predicted preaspiration: %sms, %sms" % (str(np.min(X)), str(np.min(Y)))
 
 
     thresholds = [2, 5, 10, 15, 20, 25, 50]
@@ -140,8 +162,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("params_path", help="A path to a file containing the model parameters (after training)")
     parser.add_argument("decode_path", help="A path to a directory containing the extracted features for the decoding")
-    parser.add_argument("--dataset", help="dataset/testset to be decoded: sb(switchboard)/pa/toy", default='pa')
-    parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
+    parser.add_argument("--dataset", help="dataset/testset to be decoded: sb(switchboard)/pa/toy/timit", default='pa')
+    parser.add_argument('--batch_size', help='Size of training batch', default=32, type=int)
     parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     parser.add_argument('--use_k', help='Apply inference when k (# of segments) is known for each example', action='store_true', default=False)
     args = parser.parse_args()
@@ -165,6 +187,9 @@ if __name__ == '__main__':
     elif args.dataset == 'toy':
         print '==> Decoding toy testset'
         dataset = toy_dataset(dataset_size=1000, seq_len=100)
+    elif args.dataset == 'timit':
+        print '==> Using timit dataset'
+        dataset = timit_dataset(args.decode_path)
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 

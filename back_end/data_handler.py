@@ -22,6 +22,9 @@ MARK_PREFIX    = 'sw'
 SEG_EXTENSION  = 'seg' 
 H5_EXTENSION   = 'h5' 
 
+DIST_EXTENSION  = 'dist'
+START_TIMES_EXTENSION  = 'start_times'
+
 PREASPIRATION_NUM_OF_FEATURES = 8
 
 
@@ -346,6 +349,43 @@ def load_preaspiration(dataset_path):
     
     return dataset
 
+def load_timit(dataset_path):
+    '''    
+    Get timit dataset from the preprocessed files
+    '''
+    print "Loading timing dataset from '%s'" % dataset_path
+    dist_ids   = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(DIST_EXTENSION)]
+    labels_ids = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(START_TIMES_EXTENSION)]
+
+    # intesection between dist files and label files (as we need both)
+    file_ids = set(dist_ids) & set(labels_ids)
+
+    print 'Constructing dataset from %d files..' % len(file_ids)
+    dataset = []
+    for fid in file_ids:
+        dist_file_path  = os.path.join(dataset_path, '{0}.{1}'.format(fid, DIST_EXTENSION))
+        seg_file_path   = os.path.join(dataset_path, '{0}.{1}'.format(fid, START_TIMES_EXTENSION))
+
+        # Read MFCC distances from the file
+        dists = np.loadtxt(dist_file_path, skiprows=1)
+        # Read segmentation
+        seg = np.loadtxt(seg_file_path)
+
+        # Ignore the boundaries and fix the segmentation accordinly
+        seg = [t-4 for t in seg if t > 4 and t < (dists.shape[0]-3)]
+        dists = dists[4:-3, :]
+        
+        # Convert the features into torch tensor
+        features = torch.FloatTensor(dists)
+
+        # Add the conversation to the dataset
+        dataset.append((features, seg))
+
+    # Sort by k (num of segments) to allow batching later
+    sorted_dataset = sorted(dataset, key=lambda x: len(x[1]))
+
+    return sorted_dataset
+
 def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
 
     dataset = []
@@ -399,6 +439,17 @@ class switchboard_dataset_after_embeddings(Dataset):
 class preaspiration_dataset(Dataset):
     def __init__(self, dataset_path):
         self.data = load_preaspiration(dataset_path)
+        self.input_size = self.data[0][0].size(1)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
+class timit_dataset(Dataset):
+    def __init__(self, dataset_path):
+        self.data = load_timit(dataset_path)
         self.input_size = self.data[0][0].size(1)
 
     def __len__(self):
