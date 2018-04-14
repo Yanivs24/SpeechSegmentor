@@ -6,7 +6,7 @@ import numpy as np
 from collections import OrderedDict
 
 # Max length of segment - in indexes
-MAX_SEGMENT_SIZE = 200
+MAX_SEGMENT_SIZE = 120
 DEFAULT_FEATURE_SIZE = 20
 
 

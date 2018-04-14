@@ -94,7 +94,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     # Use Adam optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
-    best_dev_loss = 1e3
+    best_dev_loss = 1e5
     best_iter = 0
     consecutive_no_improve = 0
     print 'Start training the model..'

@@ -15,12 +15,13 @@ from preprocess_speech import trim_nonspeech, fix_segmentation_after_trimming
 
 FEATURES_DIR   = 'tmp_files/features'
 
-WAV_EXTENSION  = 'wav'
-WAV_PREFIX     = 'sw0'
-MARK_EXTENSION = 'mrk'
-MARK_PREFIX    = 'sw'
-SEG_EXTENSION  = 'seg' 
-H5_EXTENSION   = 'h5' 
+WAV_EXTENSION    = 'wav'
+WAV_PREFIX       = 'sw0'
+MARK_EXTENSION   = 'mrk'
+MARK_PREFIX      = 'sw'
+SEG_EXTENSION    = 'seg' 
+H5_EXTENSION     = 'h5' 
+SCORES_EXTENSION = 'scores'
 
 DIST_EXTENSION  = 'dist'
 START_TIMES_EXTENSION  = 'start_times'
@@ -354,18 +355,22 @@ def load_timit(dataset_path):
     Get timit dataset from the preprocessed files
     '''
     print "Loading timing dataset from '%s'" % dataset_path
+    scores_ids = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(SCORES_EXTENSION)]
     dist_ids   = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(DIST_EXTENSION)]
     labels_ids = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(START_TIMES_EXTENSION)]
 
     # intesection between dist files and label files (as we need both)
-    file_ids = set(dist_ids) & set(labels_ids)
+    file_ids = set(dist_ids) & set(labels_ids) & set(scores_ids)
 
     print 'Constructing dataset from %d files..' % len(file_ids)
     dataset = []
     for fid in file_ids:
-        dist_file_path  = os.path.join(dataset_path, '{0}.{1}'.format(fid, DIST_EXTENSION))
-        seg_file_path   = os.path.join(dataset_path, '{0}.{1}'.format(fid, START_TIMES_EXTENSION))
+        scores_file_path  = os.path.join(dataset_path, '{0}.{1}'.format(fid, SCORES_EXTENSION))
+        dist_file_path    = os.path.join(dataset_path, '{0}.{1}'.format(fid, DIST_EXTENSION))
+        seg_file_path     = os.path.join(dataset_path, '{0}.{1}'.format(fid, START_TIMES_EXTENSION))
 
+        # Read MFCCs from the file
+        scores = np.loadtxt(scores_file_path, skiprows=1)
         # Read MFCC distances from the file
         dists = np.loadtxt(dist_file_path, skiprows=1)
         # Read segmentation
@@ -373,10 +378,14 @@ def load_timit(dataset_path):
 
         # Ignore the boundaries and fix the segmentation accordinly
         seg = [t-4 for t in seg if t > 4 and t < (dists.shape[0]-3)]
+        scores = scores[4:-3, :]
         dists = dists[4:-3, :]
+
+        # Concatenate the MFCC vectors with the distances (we add 4 features)
+        features = np.concatenate((scores, dists), axis=1)
         
         # Convert the features into torch tensor
-        features = torch.FloatTensor(dists)
+        features = torch.FloatTensor(features)
 
         # Add the conversation to the dataset
         dataset.append((features, seg))
