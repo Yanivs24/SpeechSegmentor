@@ -10,25 +10,8 @@ import torch
 
 from model.model import SpeechSegmentor
 sys.path.append('./back_end')
-from feature_extractor import extract_mfcc
 from data_handler import switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset, timit_dataset
 
-
-def get_mfcc_features(wav_path, sample_rate, win_size):
-    ''' Extract features (MFCCs) and convert them to a torch tensor '''
-
-    features = extract_mfcc(wav_path, sample_rate, win_size)
-    features = torch.FloatTensor(features.transpose())
-
-    # Reshape it to a 3d tensor (batch) with one sequence
-    torch_batch = Variable(features.view(1, features.size(0), -1))
-    lengths = Variable(torch.LongTensor([torch_batch.size(1)]))
-    return torch_batch, lengths
-
-def decode_wav(model, wav_path, sample_rate=16000, win_size=100):
-    ''' Decode single wav file using the model '''
-    batch, lengths = get_mfcc_features(wav_path, sample_rate, win_size)
-    return model(batch, lengths)
 
 def convert_to_batches(data, batch_size, is_cuda, fixed_k):
     """
@@ -91,18 +74,16 @@ def convert_to_batches(data, batch_size, is_cuda, fixed_k):
 
     return batches
 
-def decode_data(model, dataset, batch_size, is_cuda, use_k):
+def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
-    left_err = 0
-    right_err = 0
-    X = []
-    Y = []
+    labels = []
+    predictions = []
 
     # Convert data to torch batches and loop over them
     batches = convert_to_batches(dataset, batch_size, is_cuda, use_k)
     for batch, lengths, segmentations in batches:
 
-        # K Value to be sent to the model
+        # k Value to be sent to the model
         real_k = len(segmentations[0]) if use_k else None 
 
         # Predict using the model
@@ -113,47 +94,82 @@ def decode_data(model, dataset, batch_size, is_cuda, use_k):
             print 'Predicted:', pred
             print 'Gold:', gold
 
-            # Relevant for predictions where k is unknown
-            if len(pred) != len(gold):
-                print 'Bad length - the predicted length is %d while the gold length is %d' %  \
-                                                       (len(pred), len(gold))
-                continue
+            # If k is unknown, we expect to get the same size
+            if use_k and len(pred) != len(gold):
+                raise  ValueError('Bad length - the predicted length is %d while the gold length is %d' %  \
+                                   (len(pred), len(gold)))
 
-            # Timit case (TODO: support all)
-            X.extend(gold)
-            Y.extend(pred)
+            # Store gold-labels and predictions of the current example
+            labels.append(gold)
+            predictions.append(pred)
 
-            # Preaspiration 
-            # # Store event's duration
-            # X.append(gold[1]-gold[0])
-            # Y.append(pred[1]-pred[0])
+    # Evaluate the performance according to the specific task
+    # Fixed k
+    if use_k:
+        if dataset_name == 'pa':
+            eval_performance_pa(labels, predictions)
+        elif dataset_name == 'timit':
+            eval_performance_timit(labels, predictions)
+        else:
+            print 'Performance evaluating not supported for %s' % dataset_name
+    # k is not fixed (TODO: implement)
+    else:
+        pass
 
-            # # not found - zeros vector
-            # if pred[1] <= pred[0]:
-            #     print 'Warning - bad prediction: %s' % str(pred)
+def eval_performance_pa(labels, predictions):
+    ''' Evaluate performence for the preaspiration task '''
 
-            # left_err += np.abs(gold[0]-pred[0])
-            # right_err += np.abs(gold[1]-pred[1])
+    gold_durations = []
+    pred_durations = []
+    left_err  = 0
+    right_err = 0
 
-    #print 'left_err: ',  float(left_err)/len(dataset)
-    #print 'right_err: ', float(right_err)/len(dataset)
+    # Store event's duration for each example
+    for gold, pred in zip(labels, predictions):
+        gold_durations.append(gold[1]-gold[0])
+        pred_durations.append(pred[1]-pred[0])
+        # not found
+        if pred[1] <= pred[0]:
+             print 'Warning - bad prediction: %s' % str(pred)
 
-    X = np.array(X)
-    Y = np.array(Y)
+        left_err += np.abs(gold[0]-pred[0])
+        right_err += np.abs(gold[1]-pred[1])
 
-    # print "Mean of labeled/predicted preaspiration: %sms, %sms" % (str(np.mean(X)), str(np.mean(Y)))
-    # print "Standard deviation of labeled/predicted preaspiration: %sms, %sms" % (str(np.std(X)), str(np.std(Y)))
-    # print "max of labeled/predicted preaspiration: %sms, %sms" % (str(np.max(X)), str(np.max(Y)))
-    # print "min of labeled/predicted preaspiration: %sms, %sms" % (str(np.min(X)), str(np.min(Y)))
+    print 'left_err: ',  float(left_err)/len(labels)
+    print 'right_err: ', float(right_err)/len(labels)
 
+    Y     = np.array(gold_durations)
+    Y_tag = np.array(pred_durations)
+
+    print "Mean of labeled/predicted preaspiration: %sms, %sms" % (str(np.mean(Y)), str(np.mean(Y_tag)))
+    print "Standard deviation of labeled/predicted preaspiration: %sms, %sms" % (str(np.std(Y)), str(np.std(Y_tag)))
+    print "max of labeled/predicted preaspiration: %sms, %sms" % (str(np.max(Y)), str(np.max(Y_tag)))
+    print "min of labeled/predicted preaspiration: %sms, %sms" % (str(np.min(Y)), str(np.min(Y_tag)))
 
     thresholds = [2, 5, 10, 15, 20, 25, 50]
-    print "Percentage of examples with labeled/predicted PA difference of at most:"
+    print "Percentage of examples with labeled/predicted difference of at most:"
     print "------------------------------"
-    
     for thresh in thresholds:
-        print "%d msec: " % thresh, 100*(len(X[abs(X-Y)<thresh])/float(len(X)))
+        print "%d msec: " % thresh, 100*(len(Y[abs(Y-Y_tag)<thresh])/float(len(Y)))
 
+def eval_performance_timit(labels, predictions):
+    ''' Evaluate performence for the timit task '''
+
+    gold_all = []
+    pred_all = []
+    for gold, pred in zip(labels, predictions):
+        gold_all.extend(gold)
+        pred_all.extend(pred)
+
+    Y     = np.array(gold_all)
+    Y_tag = np.array(pred_all)
+
+    thresholds = [10, 20, 30, 40]
+    print "Percentage of examples with labeled/predicted difference of at most:"
+    print "------------------------------"
+    # Here each index is 10ms wide - so we multiply by 10
+    for thresh in thresholds:
+        print "%d msec: " % thresh, 100*(len(Y[10*abs(Y-Y_tag)<=thresh])/float(len(Y)))
 
 if __name__ == '__main__':
 
@@ -199,7 +215,8 @@ if __name__ == '__main__':
                             is_cuda=args.is_cuda)
 
     # Decode the data
-    decode_data(model=model, 
+    decode_data(model=model,
+                dataset_name=args.dataset,
                 dataset=dataset,
                 batch_size=args.batch_size,
                 is_cuda=args.is_cuda, 
