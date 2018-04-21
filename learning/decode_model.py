@@ -155,21 +155,42 @@ def eval_performance_pa(labels, predictions):
 def eval_performance_timit(labels, predictions):
     ''' Evaluate performence for the timit task '''
 
+    # Here each index is 10ms wide
+    thresholds = [1, 2, 3, 4]
     gold_all = []
     pred_all = []
+    precisions = np.zeros(4)
+    recalls    = np.zeros(4)
+
     for gold, pred in zip(labels, predictions):
         gold_all.extend(gold)
         pred_all.extend(pred)
 
-    Y     = np.array(gold_all)
-    Y_tag = np.array(pred_all)
+        pred, gold = np.array(pred), np.array(gold)
 
-    thresholds = [10, 20, 30, 40]
+        # Count for precision
+        for y_hat in pred:
+            min_dist = min(np.abs(gold-y_hat))
+            for i in range(len(thresholds)):
+                precisions[i] += (min_dist<=thresholds[i])
+        # Count for recall
+        for y in gold:
+            min_dist = min(np.abs(pred-y))
+            for i in range(len(thresholds)):
+                recalls[i] += (min_dist<=thresholds[i])
+
+    Y, Y_tag   = np.array(gold_all), np.array(pred_all)
+     
     print "Percentage of examples with labeled/predicted difference of at most:"
     print "------------------------------"
-    # Here each index is 10ms wide - so we multiply by 10
+    # Here each index is 10ms wide
     for thresh in thresholds:
-        print "%d msec: " % thresh, 100*(len(Y[10*abs(Y-Y_tag)<=thresh])/float(len(Y)))
+        print "%d msec: " % (thresh*10), 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y)))
+
+    print "Proportion of labeled/predicted precision and recall of at most:"
+    print "------------------------------"
+    print "Precision: ", precisions / float(len(Y))
+    print "Recall: ", recalls / float(len(Y))
 
 if __name__ == '__main__':
 

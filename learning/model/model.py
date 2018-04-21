@@ -302,7 +302,7 @@ class SpeechSegmentor(nn.Module):
 
         return scores
 
-    def local_task_loss(self, pred_y, batch_gold_y, tolerance=2):
+    def local_task_loss(self, pred_y, batch_gold_y, tolerance=1):
         ''' 
         Get the distance from the label new_y from the batch labels
         Parameters:
@@ -317,7 +317,7 @@ class SpeechSegmentor(nn.Module):
 
         return distances
 
-    def get_task_loss(self, pred_segmentations, gold_segmentations, tolerance=2):
+    def get_task_loss(self, pred_segmentations, gold_segmentations, tolerance=1):
 
         batch_size = len(pred_segmentations)
         task_losses = torch.zeros(batch_size)

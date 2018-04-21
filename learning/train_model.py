@@ -126,11 +126,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             start_time = time.time()
             gold_scores = model.get_score(batch, lengths, segmentations)
             print("Get score: %s seconds ---" % (time.time() - start_time))
-
-            print segmentations
-            print '------------------------------------------------------------'
-            print pred_segmentations
-
+            
             start_time = time.time()
             # Structural loss
             if use_taskloss:
@@ -154,9 +150,10 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         # Check performance on the dev set
         dev_closs = 0.0
         dev_ctaskloss = 0
-        dev_correct_counter = 0
-        dev_gold_counter    = 0
-        dev_pred_counter    = 0
+        dev_precision_counter = 0
+        dev_recall_counter    = 0
+        dev_gold_counter      = 0
+        dev_pred_counter      = 0
         for batch, lengths, segmentations in dev_batches:
 
             # Clear gradients (Pytorch accumulates gradients)
@@ -173,15 +170,20 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             # Get gold scores
             gold_scores = model.get_score(batch, lengths, segmentations)
 
-            # Update counters for precision and recall
+            # Update counters for precision and recall (with 2 indexes forgiveness collar)
             for gold_seg, pred_seg in zip(segmentations, pred_segmentations):
-                # Correct predictions (with 2 indexes forgiveness collar)
-                for y in pred_seg:
-                    if filter(lambda t: abs(t-y) <= 2, gold_seg):
-                        dev_correct_counter += 1 
-                # Count boundaries                        
-                dev_gold_counter += len(gold_seg)
+                pred, gold = np.array(pred_seg), np.array(gold_seg)
+                # Count for precision
+                for y_hat in pred:
+                    min_dist = min(np.abs(gold-y_hat))
+                    dev_precision_counter += (min_dist<=2)
+                # Count for recall
+                for y in gold:
+                    min_dist = min(np.abs(pred-y))
+                    dev_recall_counter += (min_dist<=2)
+                # Add amounts                        
                 dev_pred_counter += len(pred_seg)
+                dev_gold_counter += len(gold_seg)
 
             # Structural loss
             if use_taskloss:
@@ -191,7 +193,6 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                 batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
 
             loss = torch.mean(batch_loss)
-
             taskloss = torch.mean(model.get_task_loss(pred_segmentations, segmentations))
 
             print segmentations
@@ -212,8 +213,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         print "Results for Epoch #%d" % (ITER+1)
         print "Train avg loss %s | Dev avg loss: %s" % (avg_train_loss, avg_dev_loss)
         print "Dev avg taskloss: %f" % avg_dev_taskloss
-        print "Dev precision: %f" % (float(dev_correct_counter) / dev_pred_counter)
-        print "Dev recall: %f" % (float(dev_correct_counter) / dev_gold_counter)
+        print "Dev precision: %f" % (float(dev_precision_counter) / dev_pred_counter)
+        print "Dev recall: %f" % (float(dev_recall_counter) / dev_gold_counter)
         print "#####################################################################"
 
         # check if it's the best (minimum) task loss so far
