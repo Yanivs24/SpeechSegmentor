@@ -6,7 +6,7 @@ import numpy as np
 from collections import OrderedDict
 
 # Max length of segment - in indexes
-MAX_SEGMENT_SIZE = 120
+MAX_SEGMENT_SIZE = 52
 DEFAULT_FEATURE_SIZE = 20
 
 
@@ -34,8 +34,8 @@ class NotFoundRNNsError(Exception):
 
 class SpeechSegmentor(nn.Module):
     def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE,
-                 rnn_output_dim=50, sum_mlp_hid_dims=(100, 100),
-                 output_mlp_hid_dim=100, is_cuda=True, use_srnn=False,
+                 rnn_output_dim=100, sum_mlp_hid_dims=(200, 200),
+                 output_mlp_hid_dim=200, is_cuda=True, use_srnn=False,
                  use_task_loss=False, task_loss_coef=0.001, load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()

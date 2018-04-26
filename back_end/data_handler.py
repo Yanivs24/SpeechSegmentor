@@ -364,6 +364,7 @@ def load_timit(dataset_path):
 
     print 'Constructing dataset from %d files..' % len(file_ids)
     dataset = []
+    skipped_counter = 0
     for fid in file_ids:
         scores_file_path  = os.path.join(dataset_path, '{0}.{1}'.format(fid, SCORES_EXTENSION))
         dist_file_path    = os.path.join(dataset_path, '{0}.{1}'.format(fid, DIST_EXTENSION))
@@ -381,6 +382,19 @@ def load_timit(dataset_path):
         scores = scores[4:-3, :]
         dists = dists[4:-3, :]
 
+        # Skip samples with big segments (over 400ms), should be few files
+        skip_file = False
+        full_seg = [0] + seg + [len(scores)-1]
+        for i in range(len(full_seg)-1):
+            if full_seg[i+1]-full_seg[i] >= 50:
+                print 'Got big segment: {0}-{1}, skipping file: {2}.'.format(full_seg[i], full_seg[i+1], fid)
+                skip_file = True
+                break
+
+        if skip_file:
+            skipped_counter += 1
+            continue
+
         # Concatenate the MFCC vectors with the distances (we add 4 features)
         features = np.concatenate((scores, dists), axis=1)
         
@@ -390,6 +404,8 @@ def load_timit(dataset_path):
         # Add the conversation to the dataset
         dataset.append((features, seg))
 
+    print 'Skipped total %d files' % skipped_counter
+    
     # Sort by k (num of segments) to allow batching later
     sorted_dataset = sorted(dataset, key=lambda x: len(x[1]))
 

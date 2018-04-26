@@ -94,8 +94,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     # Use Adam optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
-    best_dev_loss = 1e5
-    best_iter = 0
+    best_dev_loss = 0
     consecutive_no_improve = 0
     print 'Start training the model..'
     for ITER in xrange(iterations):
@@ -209,17 +208,22 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         avg_dev_loss = dev_closs / len(dev_batches)
         avg_dev_taskloss = dev_ctaskloss / len(dev_batches)
 
+        dev_precision = float(dev_precision_counter) / dev_pred_counter
+        dev_recall    = float(dev_recall_counter) / dev_gold_counter
+        dev_f1        = (2 * (dev_precision*dev_recall) / (dev_precision+dev_recall))
+
         print "#####################################################################"
         print "Results for Epoch #%d" % (ITER+1)
         print "Train avg loss %s | Dev avg loss: %s" % (avg_train_loss, avg_dev_loss)
         print "Dev avg taskloss: %f" % avg_dev_taskloss
-        print "Dev precision: %f" % (float(dev_precision_counter) / dev_pred_counter)
-        print "Dev recall: %f" % (float(dev_recall_counter) / dev_gold_counter)
+        print "Dev precision: %f" % dev_precision
+        print "Dev recall: %f" % dev_recall
+        print "Dev F1 score: %f" % dev_f1
         print "#####################################################################"
 
-        # check if it's the best (minimum) task loss so far
-        if avg_dev_taskloss < best_dev_loss:
-            best_dev_loss = avg_dev_taskloss
+        # check if it's the best loss so far (for now we use F1 score)
+        if dev_f1 > best_dev_loss:
+            best_dev_loss = dev_f1
             consecutive_no_improve = 0
             # store parameters after each loss improvement
             print 'Best dev loss so far - storing parameters in %s' % params_file
