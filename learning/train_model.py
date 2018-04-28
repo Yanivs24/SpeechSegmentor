@@ -2,7 +2,6 @@
 
 import sys
 import time
-import signal
 import argparse
 import random
 import numpy as np
@@ -208,6 +207,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         avg_dev_loss = dev_closs / len(dev_batches)
         avg_dev_taskloss = dev_ctaskloss / len(dev_batches)
 
+        # Evaluate performence 
         dev_precision = float(dev_precision_counter) / dev_pred_counter
         dev_recall    = float(dev_recall_counter) / dev_gold_counter
         dev_f1        = (2 * (dev_precision*dev_recall) / (dev_precision+dev_recall))
@@ -256,6 +256,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=False)
     parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
     parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.001, type=float)
+    parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
     args = parser.parse_args()
 
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
@@ -270,12 +271,6 @@ if __name__ == '__main__':
         args.use_task_loss = True
     
     if args.dataset == 'sb':
-        #print '==> Using switchboard dataset'
-        # dataset = switchboard_dataset(dataset_path=args.train_path,
-        #                               feature_type='mfcc',
-        #                               sample_rate=16000, 
-        #                               win_size=100, # In ms
-        #                               run_over=True)
         print '==> Using preprocessed switchboard dataset '
         dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path,
                                                        hop_size=0.5) # hop_size should be the same as used 
@@ -305,7 +300,8 @@ if __name__ == '__main__':
                             load_from_file=args.init_params,
                             is_cuda=args.is_cuda, 
                             use_task_loss=args.use_task_loss,
-                            task_loss_coef=args.task_loss_coef)
+                            task_loss_coef=args.task_loss_coef,
+                            max_segment_size=args.max_segment_size)
 
     # train the model
     train_model(model=model,

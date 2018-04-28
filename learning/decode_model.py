@@ -1,78 +1,16 @@
 #!/usr/bin/python
 
 import numpy as np
-import matplotlib.pyplot as plt
 import argparse
 import sys
 
-from torch.autograd import Variable
 import torch
 
 from model.model import SpeechSegmentor
+from train_model import convert_to_batches
 sys.path.append('./back_end')
 from data_handler import switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset, timit_dataset
 
-
-def convert_to_batches(data, batch_size, is_cuda, fixed_k):
-    """
-    Data: list of tuples each from the format: (tensor, label)
-          where the tensor should be 2d contatining features
-          for each time frame.  
-
-    Output: A list contating tuples from the format: (batch_tensor, lengths, labels)      
-    """
-
-    num_of_examples = len(data)
-
-    # Loop over the examples and gather them into padded batches
-    batches = []
-    i = 0
-    while i < num_of_examples:
-
-        # Gather examples with the same number of segments - k (batching can only work if
-        # k is fixed along the batch examples)
-        if fixed_k:
-            first_k = len(data[i][1])
-            count = 0
-            while (i+count < num_of_examples) and (first_k == len(data[i+count][1])):
-                count += 1
-
-            cur_batch_size = min(count, batch_size)
-        else:
-            cur_batch_size = min(num_of_examples-i, batch_size)
-
-        # Get tensors and labels
-        tensors = [ex[0] for ex in data[i:i+cur_batch_size]]
-        labels = [ex[1] for ex in data[i:i+cur_batch_size]]
-        
-        # Get sizes
-        max_length = max([ten.size(0) for ten in tensors])
-        features_length = tensors[0].size(1)
-
-        # Get a padded batch tensor
-        padded_batch = torch.zeros(cur_batch_size, max_length, features_length)
-
-        lengths = []
-        for j,ten in enumerate(tensors):
-            current_length = ten.size(0)
-            padded_batch[j] = torch.cat([ten, torch.zeros(max_length - current_length, features_length)])
-            lengths.append(current_length)
-
-        # Convert to variables
-        padded_batch = Variable(padded_batch)
-        lengths = Variable(torch.LongTensor(lengths))
-
-        if is_cuda:
-            padded_batch = padded_batch.cuda()
-            lengths = lengths.cuda()
-
-        # Add it to the batches list along with the real lengths and labels
-        batches.append((padded_batch, lengths, labels))
-
-        # Progress i for the next batch
-        i += cur_batch_size
-
-    return batches
 
 def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
@@ -203,6 +141,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', help='Size of training batch', default=32, type=int)
     parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     parser.add_argument('--use_k', help='Apply inference when k (# of segments) is known for each example', action='store_true', default=False)
+    parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
     args = parser.parse_args()
 
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
@@ -233,7 +172,8 @@ if __name__ == '__main__':
     # Construct a model with the pre-trained parameters
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size, 
                             load_from_file=args.params_path,
-                            is_cuda=args.is_cuda)
+                            is_cuda=args.is_cuda,
+                            max_segment_size=args.max_segment_size)
 
     # Decode the data
     decode_data(model=model,

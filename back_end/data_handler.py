@@ -382,7 +382,7 @@ def load_timit(dataset_path):
         scores = scores[4:-3, :]
         dists = dists[4:-3, :]
 
-        # Skip samples with big segments (over 400ms), should be few files
+        # Skip samples with big segments (over 500ms), should be few files
         skip_file = False
         full_seg = [0] + seg + [len(scores)-1]
         for i in range(len(full_seg)-1):
@@ -405,7 +405,7 @@ def load_timit(dataset_path):
         dataset.append((features, seg))
 
     print 'Skipped total %d files' % skipped_counter
-    
+
     # Sort by k (num of segments) to allow batching later
     sorted_dataset = sorted(dataset, key=lambda x: len(x[1]))
 

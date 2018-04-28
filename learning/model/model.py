@@ -5,8 +5,6 @@ from torch.autograd import Variable
 import numpy as np
 from collections import OrderedDict
 
-# Max length of segment - in indexes
-MAX_SEGMENT_SIZE = 52
 DEFAULT_FEATURE_SIZE = 20
 
 
@@ -36,20 +34,20 @@ class SpeechSegmentor(nn.Module):
     def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE,
                  rnn_output_dim=100, sum_mlp_hid_dims=(200, 200),
                  output_mlp_hid_dim=200, is_cuda=True, use_srnn=False,
-                 use_task_loss=False, task_loss_coef=0.001, load_from_file=''):
+                 use_task_loss=False, task_loss_coef=0.001, max_segment_size=120,
+                 load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 
         # Use BiRNN and summation instead of segmental RNN (much faster)
         self.SUM_MODE = not use_srnn
 
+        # Get args
         self.rnn_output_dim = rnn_output_dim
-
         self.is_cuda = is_cuda
-
         self.use_task_loss = use_task_loss
-
         self.task_loss_coef = task_loss_coef
+        self.max_segment_size = max_segment_size
 
         # Network parameters:
 
@@ -100,7 +98,6 @@ class SpeechSegmentor(nn.Module):
         '''
         batch_size   = batch.size(0)
         seq_length   = batch.size(1)
-        input_length = batch.size(2)
 
         # Create random hidden states
         # The 4 is due to a bidirectional RNN with two layers (2x2=4)
@@ -372,7 +369,7 @@ class SpeechSegmentor(nn.Module):
             if self.is_cuda:
                 local_scores = local_scores.cuda()
             for i in range(1, max_length):
-                start_index = max(0, i-MAX_SEGMENT_SIZE)
+                start_index = max(0, i-self.max_segment_size)
                 for j in range(start_index, i):
                     local_scores[:, j, i] = self.get_local_score(batch, j, i)
 
@@ -428,7 +425,7 @@ class SpeechSegmentor(nn.Module):
         onsets = np.zeros((batch_size, num_of_segments-1))
 
         # Initialization - zero segment cases (the whole sequence)
-        for i in range(1, min(MAX_SEGMENT_SIZE, n)):
+        for i in range(1, min(self.max_segment_size, n)):
             s = local_scores[:, 0, i]
             M[:, 0, i] = s.data.cpu().numpy()
 
@@ -443,7 +440,7 @@ class SpeechSegmentor(nn.Module):
                 best_indexes.fill(-1)
                 max_scores = np.empty(batch_size)
                 max_scores.fill(-np.inf)
-                start_index = max(0, j-MAX_SEGMENT_SIZE)
+                start_index = max(0, j-self.max_segment_size)
                 # loop over possible onsets for the ith segment
                 for t in range(start_index, j):  
                     s = local_scores[:, t, j]
@@ -502,11 +499,11 @@ class SpeechSegmentor(nn.Module):
         # algorithm since we don't want to affect the computation graph
         for i in range(1, max_length):
             # Get scores of subsequences of seq[:i] that ends with i
-            current_scores = torch.zeros(batch_size, min(i, MAX_SEGMENT_SIZE))
+            current_scores = torch.zeros(batch_size, min(i, self.max_segment_size))
             if self.is_cuda:
                 current_scores = current_scores.cuda()
 
-            start_index = max(0, i-MAX_SEGMENT_SIZE)
+            start_index = max(0, i-self.max_segment_size)
             for j in range(start_index, i):
                 current_scores[:, j-start_index] = best_scores[:, j] + self.get_local_score(batch, j, i)[:, 0].data
                 #current_scores[:, j-start_index] = best_scores[:, j] + local_scores[:, j, i].data
