@@ -125,10 +125,13 @@ def eval_performance_timit(labels, predictions):
     for thresh in thresholds:
         print "%d msec: " % (thresh*10), 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y)))
 
+    precisions = precisions / float(len(Y))
+    recalls    = recalls / float(len(Y))
     print "Proportion of labeled/predicted precision and recall of at most:"
     print "------------------------------"
-    print "Precision: ", precisions / float(len(Y))
-    print "Recall: ", recalls / float(len(Y))
+    print "Precision: ", precisions
+    print "Recall: ", recalls
+    print "F1 score: ", 2*precisions*recalls / (precisions+recalls)
 
 if __name__ == '__main__':
 

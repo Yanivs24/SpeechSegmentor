@@ -257,6 +257,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
     parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.001, type=float)
     parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
+    parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
     args = parser.parse_args()
 
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
@@ -301,7 +302,8 @@ if __name__ == '__main__':
                             is_cuda=args.is_cuda, 
                             use_task_loss=args.use_task_loss,
                             task_loss_coef=args.task_loss_coef,
-                            max_segment_size=args.max_segment_size)
+                            max_segment_size=args.max_segment_size,
+                            load_lstm_from_file=args.init_lstm_params)
 
     # train the model
     train_model(model=model,

@@ -35,7 +35,7 @@ class SpeechSegmentor(nn.Module):
                  rnn_output_dim=100, sum_mlp_hid_dims=(200, 200),
                  output_mlp_hid_dim=200, is_cuda=True, use_srnn=False,
                  use_task_loss=False, task_loss_coef=0.001, max_segment_size=120,
-                 load_from_file=''):
+                 load_lstm_from_file='', load_from_file=''):
 
         super(SpeechSegmentor, self).__init__()
 
@@ -52,7 +52,7 @@ class SpeechSegmentor(nn.Module):
         # Network parameters:
 
         # BiLSTM (2D LSTM)
-        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.0)
+        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.3)
 
         # Forward RNN (for segmental RNN)
         self.RNN_F = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
@@ -84,6 +84,12 @@ class SpeechSegmentor(nn.Module):
         if load_from_file:
             self.load_params(load_from_file)
 
+        if load_lstm_from_file:
+            # Load the params
+            self.load_lstm_params(load_lstm_from_file)
+            # We don't want to train these params
+            self.BiRNN.requires_grad = False
+            
 
     def calc_birnn_sums(self, batch, lengths):
         '''
@@ -549,4 +555,14 @@ class SpeechSegmentor(nn.Module):
     def load_params(self, fpath):
         self.load_state_dict(torch.load(fpath))
 
+    def load_lstm_params(self, fpath):
+        # Get relevant trained parameters 
+        pretrained_dict = torch.load(fpath)
+        # Filter only field that related to the lstm
+        lstm_dict = {k: v for k, v in pretrained_dict.items() if k.startswith('BiRNN')}
+        # Overwrite entries in the existing state dict
+        model_dict = self.state_dict()
+        model_dict.update(lstm_dict) 
+        # Load the new state dict
+        self.load_state_dict(model_dict)
 
