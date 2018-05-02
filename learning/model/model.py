@@ -52,7 +52,7 @@ class SpeechSegmentor(nn.Module):
         # Network parameters:
 
         # BiLSTM (2D LSTM)
-        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.3)
+        self.BiRNN = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=2, bidirectional=True, batch_first=True, dropout=0.0)
 
         # Forward RNN (for segmental RNN)
         self.RNN_F = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
