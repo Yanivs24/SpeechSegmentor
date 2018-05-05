@@ -47,12 +47,15 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
         if dataset_name == 'pa':
             eval_performance_pa(labels, predictions)
         elif dataset_name == 'timit':
-            eval_performance_timit(labels, predictions)
+            eval_performance_timit(labels, predictions, use_k=True)
         else:
-            print 'Performance evaluating not supported for %s' % dataset_name
-    # k is not fixed (TODO: implement)
+            print 'Performance evaluating with fixed K is not supported for %s' % dataset_name
+    # k is not fixed
     else:
-        pass
+        if dataset_name == 'timit':
+            eval_performance_timit(labels, predictions, use_k=False)
+        else:
+            print 'Performance evaluating with unknown K is supported for %s' % dataset_name
 
 def eval_performance_pa(labels, predictions):
     ''' Evaluate performence for the preaspiration task '''
@@ -90,7 +93,7 @@ def eval_performance_pa(labels, predictions):
     for thresh in thresholds:
         print "%d msec: " % thresh, 100*(len(Y[abs(Y-Y_tag)<thresh])/float(len(Y)))
 
-def eval_performance_timit(labels, predictions):
+def eval_performance_timit(labels, predictions, use_k):
     ''' Evaluate performence for the timit task '''
 
     # Here each index is 10ms wide
@@ -119,15 +122,17 @@ def eval_performance_timit(labels, predictions):
 
     Y, Y_tag   = np.array(gold_all), np.array(pred_all)
      
-    print "Percentage of examples with labeled/predicted difference of at most:"
-    print "------------------------------"
-    # Here each index is 10ms wide
-    for thresh in thresholds:
-        print "%d msec: " % (thresh*10), 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y)))
+    # Compare element-wise, relevant only if k is fixed 
+    if use_k:
+        print "Percentage of examples with labeled/predicted difference of at most:"
+        print "------------------------------"
+        # Here each index is 10ms wide
+        for thresh in thresholds:
+            print "%d msec: " % (thresh*10), 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y)))
 
-    precisions = precisions / float(len(Y))
+    precisions = precisions / float(len(Y_tag))
     recalls    = recalls / float(len(Y))
-    print "Proportion of labeled/predicted precision and recall of at most:"
+    print "Proportion of labeled/predicted precision and recall of at most 10ms,20ms,30ms,40ms:"
     print "------------------------------"
     print "Precision: ", precisions
     print "Recall: ", recalls

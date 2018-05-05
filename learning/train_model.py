@@ -191,8 +191,11 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                 batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
 
             loss = torch.mean(batch_loss)
-            taskloss = torch.mean(model.get_task_loss(pred_segmentations, segmentations))
 
+            taskloss = 0
+            if use_taskloss:
+                taskloss = torch.mean(model.get_task_loss(pred_segmentations, segmentations))
+            
             print segmentations
             print '------------------------------------------------------------'
             print pred_segmentations
@@ -205,7 +208,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         # Average train and dev losses
         avg_train_loss = train_closs / len(train_batches)
         avg_dev_loss = dev_closs / len(dev_batches)
-        avg_dev_taskloss = dev_ctaskloss / len(dev_batches)
+        if use_taskloss:
+            avg_dev_taskloss = dev_ctaskloss / len(dev_batches)
 
         # Evaluate performence 
         dev_precision = float(dev_precision_counter) / dev_pred_counter
@@ -215,7 +219,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         print "#####################################################################"
         print "Results for Epoch #%d" % (ITER+1)
         print "Train avg loss %s | Dev avg loss: %s" % (avg_train_loss, avg_dev_loss)
-        print "Dev avg taskloss: %f" % avg_dev_taskloss
+        if use_taskloss:
+            print "Dev avg taskloss: %f" % avg_dev_taskloss
         print "Dev precision: %f" % dev_precision
         print "Dev recall: %f" % dev_recall
         print "Dev F1 score: %f" % dev_f1
