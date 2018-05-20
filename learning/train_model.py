@@ -192,16 +192,15 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             loss = torch.mean(batch_loss)
 
-            taskloss = 0
-            if use_taskloss:
-                taskloss = torch.mean(model.get_task_loss(pred_segmentations, segmentations))
-            
             print segmentations
             print '------------------------------------------------------------'
             print pred_segmentations
 
             print "The dev avg loss is %s" % str(loss)
-            print "The dev avg taskloss is %s" % str(taskloss)
+            taskloss = 0
+            if use_taskloss:
+                taskloss = torch.mean(model.get_task_loss(pred_segmentations, segmentations))
+                print "The dev avg taskloss is %s" % str(taskloss)
             dev_closs += float(loss.data[0])
             dev_ctaskloss += taskloss
 
