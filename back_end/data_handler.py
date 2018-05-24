@@ -439,7 +439,7 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
     '''
     Get general dataset from the preprocessed files with specific suffix
     '''
-    CACHE = dataset_path + ".cached"
+    CACHE = os.path.join(dataset_path, ".cached")
 
     print("==> Loading cached version...")
     if os.path.exists(CACHE):
@@ -458,9 +458,10 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             dataset.append((x_t, y_t[1]))
             files.append(item)
 
-    with open(CACHE, 'wb') as f:
-        pickle.dump((dataset, files), f, protocol=pickle.HIGHEST_PROTOCOL)
-    print("==> Saved to cache")
+    if not os.path.exists(CACHE):
+        with open(CACHE, 'wb') as f:
+            pickle.dump((dataset, files), f, protocol=pickle.HIGHEST_PROTOCOL)
+        print("==> Saved to cache")
 
     return dataset, files
 
