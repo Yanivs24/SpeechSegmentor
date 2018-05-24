@@ -1,17 +1,18 @@
-import os
-import numpy as np
 import cPickle as pickle
-import librosa
-import soundfile as sf
-import torch
+import os
 import random
-import h5py
-from shutil import copyfile
 from collections import OrderedDict
+from shutil import copyfile
+
+import h5py
+import librosa
+import numpy as np
+import torch
 from torch.utils.data import Dataset
 
+import soundfile as sf
 from feature_extractor import feature_extractors
-from preprocess_speech import trim_nonspeech, fix_segmentation_after_trimming
+from preprocess_speech import fix_segmentation_after_trimming, trim_nonspeech
 
 FEATURES_DIR   = 'tmp_files/features'
 
@@ -19,8 +20,8 @@ WAV_EXTENSION    = 'wav'
 WAV_PREFIX       = 'sw0'
 MARK_EXTENSION   = 'mrk'
 MARK_PREFIX      = 'sw'
-SEG_EXTENSION    = 'seg' 
-H5_EXTENSION     = 'h5' 
+SEG_EXTENSION    = 'seg'
+H5_EXTENSION     = 'h5'
 SCORES_EXTENSION = 'scores'
 
 DIST_EXTENSION  = 'dist'
@@ -82,12 +83,12 @@ def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_siz
 def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
     '''
     Load preprocessed switchboard data from a directory after extracting speech
-    turn embedding using pyannote.audio from switchboard's wav files. 
+    turn embedding using pyannote.audio from switchboard's wav files.
 
     Params:
         embeddings_data_path - path to a directory containing the .h5 files and their
                                corresponding .seg files
-        hop_size             - the hop size that was used to extract the speaker embeddings -  
+        hop_size             - the hop size that was used to extract the speaker embeddings -
                                we use it to convert the segmentation from time to indexes.
     '''
     print "Loading switchboard speaker embeddings from '%s'" % embeddings_data_path
@@ -103,7 +104,7 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
         h5_file_path  = os.path.join(embeddings_data_path, '{0}.{1}'.format(file, H5_EXTENSION))
         seg_file_path = os.path.join(embeddings_data_path, '{0}.{1}'.format(file, SEG_EXTENSION))
 
-        # Read features (speaker embeddings) from the .h5 file 
+        # Read features (speaker embeddings) from the .h5 file
         file_h5 = h5py.File(h5_file_path, 'r')
         features = np.array(file_h5['features'])
 
@@ -114,7 +115,7 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
         seg = filter(lambda x: x < len(features), seg)
         seg.append(len(features)-1)
 
-        # Remove duplicates 
+        # Remove duplicates
         seg = OrderedDict((x, True) for x in seg).keys()
 
         # TEMP DEBUG - remove small speech turns
@@ -165,7 +166,7 @@ def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir
             print 'Copying "%s" to "%s"..' % (src_wav_file_path, dst_wav_file_path)
             copyfile(src_wav_file_path, dst_wav_file_path)
 
-        # Get segmentation 
+        # Get segmentation
         seg = switchboard_extract_segmentation(src_mark_file_path)
         # fix it due to the voice times after trimming
         if trim_non_speech:
@@ -177,12 +178,12 @@ def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir
             pickle.dump(seg, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_duration=100, sample_rate=16000):
-    ''' 
+    '''
     Trim (slice) the conversations and their corresponding segmentations according
     to some max duration set by max_duration (in seconds).
 
     Note:
-    This should be called after calling 'preprocess_switchboard_dataset_step1' and 
+    This should be called after calling 'preprocess_switchboard_dataset_step1' and
     'dataset_dir_path' should be the result path of this step.
     '''
 
@@ -311,7 +312,7 @@ def load_serialized_data(dataset_path):
     return dataset
 
 def load_preaspiration(dataset_path):
-    '''    
+    '''
     Get pre-aspiration dataset from a preprocessed file
     '''
 
@@ -324,8 +325,8 @@ def load_preaspiration(dataset_path):
     for ex in raw_dataset:
         # Get flat vector  and labels
         flat_seq = np.fromstring(ex[0], sep=' ')
-        left_label = int(ex[1]) - 1 
-        right_label = int(ex[2]) - 1 
+        left_label = int(ex[1]) - 1
+        right_label = int(ex[2]) - 1
 
         # Ignore bad labels
         if left_label < 0 or right_label < 0:
@@ -347,11 +348,11 @@ def load_preaspiration(dataset_path):
 
         # append to the dataset (for segmentation task)
         dataset.append((speech_seq, (left_label, right_label)))
-    
+
     return dataset
 
 def load_timit(dataset_path):
-    '''    
+    '''
     Get timit dataset from the preprocessed files
     '''
     print "Loading timing dataset from '%s'" % dataset_path
@@ -397,7 +398,7 @@ def load_timit(dataset_path):
 
         # Concatenate the MFCC vectors with the distances (we add 4 features)
         features = np.concatenate((scores, dists), axis=1)
-        
+
         # Convert the features into torch tensor
         features = torch.FloatTensor(features)
 
@@ -434,6 +435,23 @@ def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
 
     return dataset
 
+def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
+    '''
+    Get general dataset from the preprocessed files with specific suffix
+    '''
+    from tqdm import tqdm
+    files = []
+    dataset = []
+    for item in tqdm(os.listdir(dataset_path)):
+        if item.endswith(suffix_x):
+            # read data
+            x_t = np.loadtxt(os.path.join(dataset_path, item))
+            # read labels
+            y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))
+            dataset.append((x_t, y_t[1]))
+            files.append(item)
+
+    return dataset, files
 
 '''                 DATASETS                      '''
 ''' ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ '''
@@ -472,6 +490,17 @@ class preaspiration_dataset(Dataset):
     def __getitem__(self, item):
         return self.data[item]
 
+class general_dataset(Dataset):
+    def __init__(self, dataset_path, suffix):
+        self.data, self.files = load_txtdata(dataset_path, suffix)
+        self.input_size = self.data[0][0].size(1)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
 class timit_dataset(Dataset):
     def __init__(self, dataset_path):
         self.data = load_timit(dataset_path)
@@ -482,7 +511,6 @@ class timit_dataset(Dataset):
 
     def __getitem__(self, item):
         return self.data[item]
-
 
 class toy_dataset(Dataset):
     def __init__(self, dataset_size, seq_len):

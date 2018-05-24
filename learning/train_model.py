@@ -10,15 +10,17 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
-
-from data_handler import (preaspiration_dataset,
+sys.path.append('./back_end')
+from data_handler import (general_dataset, preaspiration_dataset,
                           switchboard_dataset_after_embeddings, timit_dataset,
                           toy_dataset)
 from model.model import SpeechSegmentor
 
-sys.path.append('./back_end')
+
 
 DEV_SET_PROPORTION        = 0.3
+TXT_SUFFIX = '.txt'
+DATA_SUFFIX = '.data'
 
 
 def convert_to_batches(data, batch_size, is_cuda, fixed_k):
@@ -254,7 +256,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("train_path", help="A path to the training set")
     parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
-    parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit", default='sb')
+    parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit/vot/word/vowel", default='sb')
     parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
     parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
     parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
@@ -292,8 +294,14 @@ if __name__ == '__main__':
         print '==> Using toy dataset'
         dataset = toy_dataset(dataset_size=1000, seq_len=100)
     elif args.dataset == 'timit':
-        print '==> Using timit dataset'
+        print '==> Using TIMIT dataset'
         dataset = timit_dataset(args.train_path)
+    elif args.dataset == 'vot' or args.dataset == 'word':
+        print '==> Using VOT dataset'
+        dataset = general_dataset(args.train_path, TXT_SUFFIX)
+    elif args.dataset == 'vowel':
+        print '==> Using Vowel dataset'
+        dataset = general_dataset(args.train_path, DATA_SUFFIX)
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 
