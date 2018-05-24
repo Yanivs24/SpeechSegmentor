@@ -1,8 +1,8 @@
 import numpy as np
 import librosa
 import soundfile as sf
-import pickle as pickle
-from .vad import VAD
+import cPickle as pickle
+from vad import VAD
 
 MIN_SILENT_SEGMENT_LEN_SEC = 0.3
 SLIDING_AVERAGE_WINDOW_SIZE = 9
@@ -83,10 +83,10 @@ def trim_nonspeech_dir(wav_dir_path_in, sample_rate, wav_dir_path_out):
         dst_file_path = os.path.join(wav_dir_path_out, wav_file)
         trim_file_path = os.path.join(wav_dir_path_out, "%s.trim" % os.path.splitext(wav_file)[0])
         # trim wav file 
-        print('Trimming "%s" and storing the output in "%s"..' % (wav_file, wav_dir_path_out))
+        print 'Trimming "%s" and storing the output in "%s"..' % (wav_file, wav_dir_path_out)
         voice_times = trim_nonspeech(src_file_path, sample_rate, dst_file_path)
         # Save a text file that describes the trimmed parts (for later use)
-        print('Saving trim description file in "%s"' % trim_file_path)
+        print 'Saving trim description file in "%s"' % trim_file_path
         with open(trim_file_path, 'wb') as f:
             pickle.dump(voice_times, f, protocol=pickle.HIGHEST_PROTOCOL)
 
