@@ -4,5 +4,5 @@ tmp_files/*
 !tmp_files/features/.gitkeep
 data/*
 !data/.gitkeep
-
+.ftpconfig
 

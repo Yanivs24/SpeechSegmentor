@@ -1,18 +1,22 @@
 #!/usr/bin/python
 
-import sys
-import time
 import argparse
 import random
+import sys
+import time
+
 import numpy as np
-import torch 
+import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 
+from data_handler import (preaspiration_dataset,
+                          switchboard_dataset_after_embeddings, timit_dataset,
+                          toy_dataset)
 from model.model import SpeechSegmentor
+
 sys.path.append('./back_end')
-from data_handler import switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset, timit_dataset
 
 DEV_SET_PROPORTION        = 0.3
 
@@ -21,9 +25,9 @@ def convert_to_batches(data, batch_size, is_cuda, fixed_k):
     """
     Data: list of tuples each from the format: (tensor, label)
           where the tensor should be 2d contatining features
-          for each time frame.  
+          for each time frame.
 
-    Output: A list contating tuples from the format: (batch_tensor, lengths, labels)      
+    Output: A list contating tuples from the format: (batch_tensor, lengths, labels)
     """
 
     num_of_examples = len(data)
@@ -48,7 +52,7 @@ def convert_to_batches(data, batch_size, is_cuda, fixed_k):
         # Get tensors and labels
         tensors = [ex[0] for ex in data[i:i+cur_batch_size]]
         labels = [ex[1] for ex in data[i:i+cur_batch_size]]
-        
+
         # Get sizes
         max_length = max([ten.size(0) for ten in tensors])
         features_length = tensors[0].size(1)
@@ -80,8 +84,8 @@ def convert_to_batches(data, batch_size, is_cuda, fixed_k):
 
 def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations,
                 is_cuda, patience, use_k, use_taskloss, params_file):
-    ''' 
-    Train the network 
+    '''
+    Train the network
     '''
 
     # Preprocess data into batches
@@ -114,9 +118,9 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             # Forward pass on the network
             start_time = time.time()
-            pred_segmentations, pred_scores = model(batch, 
-                                                    lengths, 
-                                                    k=real_k, 
+            pred_segmentations, pred_scores = model(batch,
+                                                    lengths,
+                                                    k=real_k,
                                                     gold_seg=segmentations)
             print("Forward: %s seconds ---" % (time.time() - start_time))
 
@@ -124,7 +128,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             start_time = time.time()
             gold_scores = model.get_score(batch, lengths, segmentations)
             print("Get score: %s seconds ---" % (time.time() - start_time))
-            
+
             start_time = time.time()
             # Structural loss
             if use_taskloss:
@@ -141,7 +145,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             loss.backward()
             optimizer.step()
             print("Backwards: %s seconds ---" % (time.time() - start_time))
-            
+
         # Evaluation mode
         model.eval()
 
@@ -161,7 +165,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             real_k = len(segmentations[0]) if use_k else None
 
             # Forward pass on the network
-            pred_segmentations, pred_scores = model(batch, 
+            pred_segmentations, pred_scores = model(batch,
                                                     lengths,
                                                     k=real_k)
 
@@ -179,7 +183,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                 for y in gold:
                     min_dist = min(np.abs(pred-y))
                     dev_recall_counter += (min_dist<=2)
-                # Add amounts                        
+                # Add amounts
                 dev_pred_counter += len(pred_seg)
                 dev_gold_counter += len(gold_seg)
 
@@ -210,7 +214,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         if use_taskloss:
             avg_dev_taskloss = dev_ctaskloss / len(dev_batches)
 
-        # Evaluate performence 
+        # Evaluate performence
         dev_precision = float(dev_precision_counter) / dev_pred_counter
         dev_recall    = float(dev_recall_counter) / dev_gold_counter
         dev_f1        = (2 * (dev_precision*dev_recall) / (dev_precision+dev_recall))
@@ -274,11 +278,11 @@ if __name__ == '__main__':
     # Always use task-loss when k in known
     if args.use_k:
         args.use_task_loss = True
-    
+
     if args.dataset == 'sb':
         print '==> Using preprocessed switchboard dataset '
         dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path,
-                                                       hop_size=0.5) # hop_size should be the same as used 
+                                                       hop_size=0.5) # hop_size should be the same as used
                                                                      # in get_embeddings.sh
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'
@@ -300,10 +304,10 @@ if __name__ == '__main__':
     train_data = dataset[:train_set_size]
     dev_data   = dataset[train_set_size:]
 
-    # create a new model 
+    # create a new model
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
                             load_from_file=args.init_params,
-                            is_cuda=args.is_cuda, 
+                            is_cuda=args.is_cuda,
                             use_task_loss=args.use_task_loss,
                             task_loss_coef=args.task_loss_coef,
                             max_segment_size=args.max_segment_size,
@@ -312,7 +316,7 @@ if __name__ == '__main__':
     # train the model
     train_model(model=model,
                 train_data=train_data,
-                dev_data=dev_data,  
+                dev_data=dev_data,
                 learning_rate=args.learning_rate,
                 batch_size=args.batch_size,
                 iterations=args.num_iters,

@@ -1,15 +1,18 @@
 #!/usr/bin/python
 
-import numpy as np
 import argparse
 import sys
 
+import numpy as np
 import torch
 
+from data_handler import (preaspiration_dataset,
+                          switchboard_dataset_after_embeddings, timit_dataset,
+                          toy_dataset)
 from model.model import SpeechSegmentor
 from train_model import convert_to_batches
+
 sys.path.append('./back_end')
-from data_handler import switchboard_dataset_after_embeddings, preaspiration_dataset, toy_dataset, timit_dataset
 
 
 def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
@@ -22,11 +25,11 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
     for batch, lengths, segmentations in batches:
 
         # k Value to be sent to the model
-        real_k = len(segmentations[0]) if use_k else None 
+        real_k = len(segmentations[0]) if use_k else None
 
         # Predict using the model
         preds, _ = model(batch, lengths, real_k)
-        
+
         # Loop over the predictions of the batch
         for pred, gold in zip(preds, segmentations):
             print 'Predicted:', pred
@@ -119,7 +122,7 @@ def eval_performance_timit(labels, predictions, use_k):
 
         #     # Hit
         #     precisions[2] += 1
-        #     recalls[2] +=1 
+        #     recalls[2] +=1
 
         #     # Find the closest hit
         #     closest = golds_in_win[np.abs(golds_in_win-y_hat).argmin()]
@@ -140,8 +143,8 @@ def eval_performance_timit(labels, predictions, use_k):
                 recalls[i] += (min_dist<=thresholds[i])
 
     Y, Y_tag   = np.array(gold_all), np.array(pred_all)
-     
-    # Compare element-wise, relevant only if k is fixed 
+
+    # Compare element-wise, relevant only if k is fixed
     if use_k:
         print "Percentage of examples with labeled/predicted difference of at most:"
         print "------------------------------"
@@ -181,7 +184,7 @@ if __name__ == '__main__':
     if args.dataset == 'sb':
         print '==> Decoding preprocessed switchboard testset '
         dataset = switchboard_dataset_after_embeddings(dataset_path=args.decode_path,
-                                                       hop_size=0.5) # hop_size should be the same as used 
+                                                       hop_size=0.5) # hop_size should be the same as used
                                                                      # in get_embeddings.sh
     elif args.dataset == 'pa':
         print '==> Decoding preaspiration testset'
@@ -197,7 +200,7 @@ if __name__ == '__main__':
         raise ValueError("%s - illegal dataset" % args.dataset)
 
     # Construct a model with the pre-trained parameters
-    model = SpeechSegmentor(rnn_input_dim=dataset.input_size, 
+    model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
                             load_from_file=args.params_path,
                             is_cuda=args.is_cuda,
                             max_segment_size=args.max_segment_size)
@@ -207,5 +210,5 @@ if __name__ == '__main__':
                 dataset_name=args.dataset,
                 dataset=dataset,
                 batch_size=args.batch_size,
-                is_cuda=args.is_cuda, 
+                is_cuda=args.is_cuda,
                 use_k=args.use_k)
