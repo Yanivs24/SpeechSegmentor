@@ -253,6 +253,7 @@ if __name__ == '__main__':
     # command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("train_path", help="A path to the training set")
+    parser.add_argument("val_path", help="A path to the training set", default=None)
     parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
     parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit", default='sb')
     parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
@@ -284,25 +285,40 @@ if __name__ == '__main__':
         dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path,
                                                        hop_size=0.5) # hop_size should be the same as used
                                                                      # in get_embeddings.sh
+        if args.val_path:
+            dev_data = switchboard_dataset_after_embeddings(dataset_path=args.val_path,
+                                                           hop_size=0.5) # hop_size should be the same as used
+                                                                         # in get_embeddings.sh
+
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'
         dataset = preaspiration_dataset(args.train_path)
+        if args.val_path:
+            dev_data = preaspiration_dataset(args.val_path)
+
     # Synthetic simple dataset for debugging
     elif args.dataset == 'toy':
         print '==> Using toy dataset'
         dataset = toy_dataset(dataset_size=1000, seq_len=100)
+        args.val_path = None
+
     elif args.dataset == 'timit':
         print '==> Using timit dataset'
         dataset = timit_dataset(args.train_path)
+        if args.val_path:
+            dev_data = timit_dataset(args.val_path)
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 
     print '\n===> Got %s examples' % str(len(dataset))
 
-    # split the dataset into training set and validation set
-    train_set_size = int((1-DEV_SET_PROPORTION) * len(dataset))
-    train_data = dataset[:train_set_size]
-    dev_data   = dataset[train_set_size:]
+    if not args.val_path:
+        # split the dataset into training set and validation set
+        train_set_size = int((1-DEV_SET_PROPORTION) * len(dataset))
+        train_data = dataset[:train_set_size]
+        dev_data   = dataset[train_set_size:]
+    else:
+        train_data = dataset
 
     # create a new model
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
