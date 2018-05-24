@@ -1,4 +1,4 @@
-import pickle as pickle
+import cPickle as pickle
 import os
 import random
 from collections import OrderedDict
@@ -9,11 +9,11 @@ import librosa
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-import pickle
+import cPickle
 
 import soundfile as sf
-from .feature_extractor import feature_extractors
-from .preprocess_speech import fix_segmentation_after_trimming, trim_nonspeech
+from feature_extractor import feature_extractors
+from preprocess_speech import fix_segmentation_after_trimming, trim_nonspeech
 
 FEATURES_DIR   = 'tmp_files/features'
 
@@ -36,18 +36,18 @@ def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_siz
     Load preprocessed switchboard data from a directory, extract features and return a dataset that
     can be used directly by the torch model.
     '''
-    print("Loading switchboard dataset files from '%s'" % preprocessed_data_path)
+    print "Loading switchboard dataset files from '%s'" % preprocessed_data_path
 
     dataset_filename = 'switchboard_%s.dat' % features_type
     dataset_path = os.path.join(FEATURES_DIR, dataset_filename)
 
     # Check if the dataset already exists
     if not run_over and os.path.exists(dataset_path):
-        print('Loading switchboard processesd dataset from %s' % dataset_path)
+        print 'Loading switchboard processesd dataset from %s' % dataset_path
         return load_serialized_data(dataset_path)
 
     # Get feature extractor
-    if features_type not in feature_extractors:
+    if not feature_extractors.has_key(features_type):
         raise KeyError("The features type %s does not exist." % features_type)
     extractor = feature_extractors[features_type]
 
@@ -55,7 +55,7 @@ def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_siz
     wav_names = [os.path.splitext(fn)[0] for fn in os.listdir(preprocessed_data_path) if fn.endswith(WAV_EXTENSION)]
     seg_names = [os.path.splitext(fn)[0] for fn in os.listdir(preprocessed_data_path) if fn.endswith(SEG_EXTENSION)]
     file_names = list(set(wav_names) & set(seg_names))
-    print('Constructing dataset from %s files..' % str(len(file_names)))
+    print 'Constructing dataset from %s files..' % str(len(file_names))
     dataset = []
     for file in file_names:
         wav_file_path = os.path.join(preprocessed_data_path, '{0}.{1}'.format(file, WAV_EXTENSION))
@@ -74,8 +74,8 @@ def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_siz
         dataset.append((features, seg))
 
     # Save the dataset for later use
-    print('Constructed dataset of %s examples.' % str(len(dataset)))
-    print("Saving dataset to %s.." % dataset_path)
+    print 'Constructed dataset of %s examples.' % str(len(dataset))
+    print "Saving dataset to %s.." % dataset_path
     with open(dataset_path, 'wb') as f:
         pickle.dump(dataset, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -92,14 +92,14 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
         hop_size             - the hop size that was used to extract the speaker embeddings -
                                we use it to convert the segmentation from time to indexes.
     '''
-    print("Loading switchboard speaker embeddings from '%s'" % embeddings_data_path)
+    print "Loading switchboard speaker embeddings from '%s'" % embeddings_data_path
 
     # Get all the the conversations file-names
     h5_names = [os.path.splitext(fn)[0] for fn in os.listdir(embeddings_data_path) if fn.endswith(H5_EXTENSION)]
     seg_names = [os.path.splitext(fn)[0] for fn in os.listdir(embeddings_data_path) if fn.endswith(SEG_EXTENSION)]
     file_names = list(set(h5_names) & set(seg_names))
 
-    print('Constructing dataset from %s files..' % str(len(file_names)))
+    print 'Constructing dataset from %s files..' % str(len(file_names))
     dataset = []
     for file in file_names:
         h5_file_path  = os.path.join(embeddings_data_path, '{0}.{1}'.format(file, H5_EXTENSION))
@@ -113,11 +113,11 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
         seg = load_serialized_data(seg_file_path)
         seg = [int(t/hop_size) for t in seg]
         # Remove illegal indexes from the right edge of the list and add the right boundary
-        seg = [x for x in seg if x < len(features)]
+        seg = filter(lambda x: x < len(features), seg)
         seg.append(len(features)-1)
 
         # Remove duplicates
-        seg = list(OrderedDict((x, True) for x in seg).keys())
+        seg = OrderedDict((x, True) for x in seg).keys()
 
         # TEMP DEBUG - remove small speech turns
         #seg = [seg[0]]+[seg[i] for i in range(1, len(seg)-1) if (seg[i]-seg[i-1] > 4) and (seg[i+1]-seg[i] > 4)] + [seg[-1]]
@@ -128,7 +128,7 @@ def load_switchboard_after_embeddings(embeddings_data_path, hop_size):
         # Add the conversation to the dataset
         dataset.append((features, seg))
 
-    print('Constructed dataset of %s examples.' % str(len(dataset)))
+    print 'Constructed dataset of %s examples.' % str(len(dataset))
     return dataset
 
 def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir_path, trim_non_speech=True, sample_rate=16000):
@@ -145,7 +145,7 @@ def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir
 
     # Get all files that has both wav file and mark file
     file_ids = switchboard_get_annotated_ids(wav_dir_path, mark_dir_path)
-    print('==> Preprocessing dataset of %s files..' % str(len(file_ids)))
+    print '==> Preprocessing dataset of %s files..' % str(len(file_ids))
 
     # Loop over the files, trim them, and extract suitable labels (segmentations)
     for file_id in file_ids:
@@ -158,13 +158,13 @@ def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir
 
         # Trim wav file and write the result to a new file
         if trim_non_speech:
-            print('Trimming "%s" and storing the result in "%s"..' % (src_wav_file_path, dst_wav_file_path))
+            print 'Trimming "%s" and storing the result in "%s"..' % (src_wav_file_path, dst_wav_file_path)
             voice_times = trim_nonspeech(src_wav_file_path, sample_rate, dst_wav_file_path)
-            print('Saving VAD output file in "%s"' % dst_vad_file_path)
+            print 'Saving VAD output file in "%s"' % dst_vad_file_path
             with open(dst_vad_file_path, 'wb') as f:
                 pickle.dump(voice_times, f, protocol=pickle.HIGHEST_PROTOCOL)
         else:
-            print('Copying "%s" to "%s"..' % (src_wav_file_path, dst_wav_file_path))
+            print 'Copying "%s" to "%s"..' % (src_wav_file_path, dst_wav_file_path)
             copyfile(src_wav_file_path, dst_wav_file_path)
 
         # Get segmentation
@@ -174,7 +174,7 @@ def preprocess_switchboard_dataset_step1(wav_dir_path, mark_dir_path, result_dir
             seg = fix_segmentation_after_trimming(seg, voice_times)
 
         # Store the segmentation
-        print('Saving segmentation file in "%s"' % dst_seg_file_path)
+        print 'Saving segmentation file in "%s"' % dst_seg_file_path
         with open(dst_seg_file_path, 'wb') as f:
             pickle.dump(seg, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -205,15 +205,15 @@ def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_
         # Get the segmentation
         seg = load_serialized_data(seg_file_path)
 
-        print('Trimming file "%s" to max duration of %s' % (wav_file_path, str(max_duration)))
+        print 'Trimming file "%s" to max duration of %s' % (wav_file_path, str(max_duration))
         trim_count = 0
         while True:
             duration_left = float(len(frames)) / sample_rate
             if (duration_left <= 0.3*max_duration) or (max(seg) == 0):
                 break
 
-            print('duration_left: ', duration_left)
-            print('seg: ', seg)
+            print 'duration_left: ', duration_left
+            print 'seg: ', seg
 
             # Find the trimmimg index (the nearest time in the segmentation)
             nearest_idx = (np.abs(np.array(seg)-max_duration)).argmin()
@@ -230,11 +230,11 @@ def preprocess_switchboard_dataset_step2(dataset_dir_path, result_dir_path, max_
 
             # Write trimmed wav file as 16-bit Signed Integer PCM (using PySoundFile)
             trimmed_wav_path = wav_dst_base_path % str(trim_count)
-            print('Writing trimmed wav file to %s' % trimmed_wav_path)
+            print 'Writing trimmed wav file to %s' % trimmed_wav_path
             sf.write(trimmed_wav_path, trimmed_frames, sample_rate, subtype='PCM_16')
             # Write trimmed segmentation
             trimmed_seg_path = seg_dst_base_path % str(trim_count)
-            print('Writing trimmed seg file to %s' % trimmed_seg_path)
+            print 'Writing trimmed seg file to %s' % trimmed_seg_path
             with open(trimmed_seg_path, 'wb') as f:
                 pickle.dump(trimmed_seg, f, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -356,7 +356,7 @@ def load_timit(dataset_path):
     '''
     Get timit dataset from the preprocessed files
     '''
-    print("Loading timing dataset from '%s'" % dataset_path)
+    print "Loading timing dataset from '%s'" % dataset_path
     scores_ids = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(SCORES_EXTENSION)]
     dist_ids   = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(DIST_EXTENSION)]
     labels_ids = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(START_TIMES_EXTENSION)]
@@ -364,7 +364,7 @@ def load_timit(dataset_path):
     # intesection between dist files and label files (as we need both)
     file_ids = set(dist_ids) & set(labels_ids) & set(scores_ids)
 
-    print('Constructing dataset from %d files..' % len(file_ids))
+    print 'Constructing dataset from %d files..' % len(file_ids)
     dataset = []
     skipped_counter = 0
     for fid in file_ids:
@@ -389,7 +389,7 @@ def load_timit(dataset_path):
         full_seg = [0] + seg + [len(scores)-1]
         for i in range(len(full_seg)-1):
             if full_seg[i+1]-full_seg[i] >= 50:
-                print('Got big segment: {0}-{1}, skipping file: {2}.'.format(full_seg[i], full_seg[i+1], fid))
+                print 'Got big segment: {0}-{1}, skipping file: {2}.'.format(full_seg[i], full_seg[i+1], fid)
                 skip_file = True
                 break
 
@@ -406,7 +406,7 @@ def load_timit(dataset_path):
         # Add the conversation to the dataset
         dataset.append((features, seg))
 
-    print('Skipped total %d files' % skipped_counter)
+    print 'Skipped total %d files' % skipped_counter
 
     # Sort by k (num of segments) to allow batching later
     sorted_dataset = sorted(dataset, key=lambda x: len(x[1]))
