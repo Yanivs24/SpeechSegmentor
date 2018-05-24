@@ -9,11 +9,11 @@ import librosa
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-import pickle
+import cPickle as pickle
 
 import soundfile as sf
-from .feature_extractor import feature_extractors
-from .preprocess_speech import fix_segmentation_after_trimming, trim_nonspeech
+from feature_extractor import feature_extractors
+from preprocess_speech import fix_segmentation_after_trimming, trim_nonspeech
 
 FEATURES_DIR   = 'tmp_files/features'
 
