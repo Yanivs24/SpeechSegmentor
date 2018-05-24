@@ -104,9 +104,9 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
     best_dev_loss = 0
     consecutive_no_improve = 0
-    print 'Start training the model..'
+    print('Start training the model..')
     for ITER in xrange(iterations):
-        print '-------- Epoch #%d --------' % (ITER+1)
+        print('-------- Epoch #%d --------' % (ITER+1))
 
         random.shuffle(train_batches)
         model.train()
@@ -144,7 +144,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                 batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
 
             loss = torch.mean(batch_loss)
-            print "The avg loss is %s" % str(loss)
+            print("The avg loss is %s" % str(loss))
             train_closs += float(loss.data[0])
 
             writer.add_scalars('metrics',
@@ -207,15 +207,15 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             loss = torch.mean(batch_loss)
 
-            print segmentations
-            print '------------------------------------------------------------'
-            print pred_segmentations
+            print(segmentations)
+            print('------------------------------------------------------------')
+            print(pred_segmentations)
 
-            print "The dev avg loss is %s" % str(loss)
+            print("The dev avg loss is %s" % str(loss))
             taskloss = 0
             if use_taskloss:
                 taskloss = torch.mean(model.get_task_loss(pred_segmentations, segmentations))
-                print "The dev avg taskloss is %s" % str(taskloss)
+                print("The dev avg taskloss is %s" % str(taskloss))
             dev_closs += float(loss.data[0])
             dev_ctaskloss += taskloss
 
@@ -230,15 +230,15 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         dev_recall    = float(dev_recall_counter) / dev_gold_counter
         dev_f1        = (2 * (dev_precision*dev_recall) / (dev_precision+dev_recall))
 
-        print "#####################################################################"
-        print "Results for Epoch #%d" % (ITER+1)
-        print "Train avg loss %s | Dev avg loss: %s" % (avg_train_loss, avg_dev_loss)
+        print("#####################################################################")
+        print("Results for Epoch #%d" % (ITER+1))
+        print("Train avg loss %s | Dev avg loss: %s" % (avg_train_loss, avg_dev_loss))
         if use_taskloss:
-            print "Dev avg taskloss: %f" % avg_dev_taskloss
-        print "Dev precision: %f" % dev_precision
-        print "Dev recall: %f" % dev_recall
-        print "Dev F1 score: %f" % dev_f1
-        print "#####################################################################"
+            print("Dev avg taskloss: %f" % avg_dev_taskloss)
+        print("Dev precision: %f" % dev_precision)
+        print("Dev recall: %f" % dev_recall)
+        print("Dev F1 score: %f" % dev_f1)
+        print("#####################################################################")
 
         writer.add_scalars('metrics',
                            {
@@ -254,17 +254,17 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             best_dev_loss = dev_f1
             consecutive_no_improve = 0
             # store parameters after each loss improvement
-            print 'Best dev loss so far - storing parameters in %s' % params_file
+            print('Best dev loss so far - storing parameters in %s' % params_file)
             model.store_params(params_file)
         else:
             consecutive_no_improve += 1
 
         # After #patience consecutive epochs without loss improvements - stop training
         if consecutive_no_improve == patience:
-            print 'No loss improvements - stop training!'
+            print('No loss improvements - stop training!')
             return
 
-    print 'Tranining process has finished!'
+    print('Tranining process has finished!')
 
 
 if __name__ == '__main__':
@@ -292,16 +292,16 @@ if __name__ == '__main__':
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
 
     if args.is_cuda:
-        print '==> Training on GPU using cuda'
+        print('==> Training on GPU using cuda')
     else:
-        print '==> Training on CPU'
+        print('==> Training on CPU')
 
     # Always use task-loss when k in known
     if args.use_k:
         args.use_task_loss = True
 
     if args.dataset == 'sb':
-        print '==> Using preprocessed switchboard dataset '
+        print('==> Using preprocessed switchboard dataset')
         dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path,
                                                        hop_size=0.5) # hop_size should be the same as used
                                                                      # in get_embeddings.sh
@@ -311,31 +311,31 @@ if __name__ == '__main__':
                                                                          # in get_embeddings.sh
 
     elif args.dataset == 'pa':
-        print '==> Using preaspiration dataset'
+        print('==> Using preaspiration dataset')
         dataset = preaspiration_dataset(args.train_path)
         if args.val_path:
             dev_data = preaspiration_dataset(args.val_path)
 
     # Synthetic simple dataset for debugging
     elif args.dataset == 'toy':
-        print '==> Using toy dataset'
+        print('==> Using toy dataset')
         dataset = toy_dataset(dataset_size=1000, seq_len=100)
         args.val_path = None
 
     elif args.dataset == 'timit':
-        print '==> Using TIMIT dataset'
+        print('==> Using TIMIT dataset')
         dataset = timit_dataset(args.train_path)
         if args.val_path:
             dev_data = timit_dataset(args.val_path)
 
     elif args.dataset == 'vot' or args.dataset == 'word':
-        print '==> Using VOT dataset'
+        print('==> Using VOT dataset')
         dataset = general_dataset(args.train_path, TXT_SUFFIX)
         if args.val_path:
             dev_data = general_dataset(args.val_path, TXT_SUFFIX)
 
     elif args.dataset == 'vowel':
-        print '==> Using Vowel dataset'
+        print('==> Using Vowel dataset')
         dataset = general_dataset(args.train_path, DATA_SUFFIX)
         if args.val_path:
             dev_data = general_dataset(args.val_path, DATA_SUFFIX)
@@ -343,7 +343,7 @@ if __name__ == '__main__':
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 
-    print '\n===> Got %s examples' % str(len(dataset))
+    print('\n===> Got %s examples' % str(len(dataset)))
 
     if not args.val_path:
         # split the dataset into training set and validation set
