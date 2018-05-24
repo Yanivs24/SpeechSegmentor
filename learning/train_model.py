@@ -10,16 +10,20 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
+
 sys.path.append('./back_end')
-from data_handler import (general_dataset, preaspiration_dataset,
+from tensorboardX import SummaryWriter
+
+from data_handler import (preaspiration_dataset,
                           switchboard_dataset_after_embeddings, timit_dataset,
-                          toy_dataset)
+                          toy_dataset, general_dataset)
 from model.model import SpeechSegmentor
 
 
 DEV_SET_PROPORTION        = 0.3
 TXT_SUFFIX = '.txt'
 DATA_SUFFIX = '.data'
+writer = SummaryWriter()
 
 
 def convert_to_batches(data, batch_size, is_cuda, fixed_k):
@@ -109,7 +113,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
         # Run train epochs
         train_closs = 0.0
-        for batch, lengths, segmentations in train_batches:
+        n_batches = len(train_batches)
+        for batch_idx, (batch, lengths, segmentations) in enumerate(train_batches):
 
             # Clear gradients (Pytorch accumulates gradients)
             model.zero_grad()
@@ -141,6 +146,11 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             loss = torch.mean(batch_loss)
             print "The avg loss is %s" % str(loss)
             train_closs += float(loss.data[0])
+
+            writer.add_scalars('metrics',
+                               {
+                                 "train_batch_loss": float(loss.data[0])
+                               }, ITER * n_batches + batch_idx)
 
             # Back propagation
             loss.backward()
@@ -230,6 +240,15 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         print "Dev F1 score: %f" % dev_f1
         print "#####################################################################"
 
+        writer.add_scalars('metrics',
+                           {
+                             "train_epoch_loss": avg_train_loss,
+                             "dev_epoch_loss": avg_dev_loss,
+                             "dev_precision": dev_precision,
+                             "dev_recall": dev_recall,
+                             "dev_f1": dev_f1
+                           }, ITER + 1)
+
         # check if it's the best loss so far (for now we use F1 score)
         if dev_f1 > best_dev_loss:
             best_dev_loss = dev_f1
@@ -254,6 +273,7 @@ if __name__ == '__main__':
     # command line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("train_path", help="A path to the training set")
+    parser.add_argument("val_path", help="A path to the training set", default=None)
     parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
     parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit/vot/word/vowel", default='sb')
     parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
@@ -285,31 +305,53 @@ if __name__ == '__main__':
         dataset = switchboard_dataset_after_embeddings(dataset_path=args.train_path,
                                                        hop_size=0.5) # hop_size should be the same as used
                                                                      # in get_embeddings.sh
+        if args.val_path:
+            dev_data = switchboard_dataset_after_embeddings(dataset_path=args.val_path,
+                                                           hop_size=0.5) # hop_size should be the same as used
+                                                                         # in get_embeddings.sh
+
     elif args.dataset == 'pa':
         print '==> Using preaspiration dataset'
         dataset = preaspiration_dataset(args.train_path)
+        if args.val_path:
+            dev_data = preaspiration_dataset(args.val_path)
+
     # Synthetic simple dataset for debugging
     elif args.dataset == 'toy':
         print '==> Using toy dataset'
         dataset = toy_dataset(dataset_size=1000, seq_len=100)
+        args.val_path = None
+
     elif args.dataset == 'timit':
         print '==> Using TIMIT dataset'
         dataset = timit_dataset(args.train_path)
+        if args.val_path:
+            dev_data = timit_dataset(args.val_path)
+
     elif args.dataset == 'vot' or args.dataset == 'word':
         print '==> Using VOT dataset'
         dataset = general_dataset(args.train_path, TXT_SUFFIX)
+        if args.val_path:
+            dev_data = general_dataset(args.val_path, TXT_SUFFIX)
+
     elif args.dataset == 'vowel':
         print '==> Using Vowel dataset'
         dataset = general_dataset(args.train_path, DATA_SUFFIX)
+        if args.val_path:
+            dev_data = general_dataset(args.val_path, DATA_SUFFIX)
+
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 
     print '\n===> Got %s examples' % str(len(dataset))
 
-    # split the dataset into training set and validation set
-    train_set_size = int((1-DEV_SET_PROPORTION) * len(dataset))
-    train_data = dataset[:train_set_size]
-    dev_data   = dataset[train_set_size:]
+    if not args.val_path:
+        # split the dataset into training set and validation set
+        train_set_size = int((1-DEV_SET_PROPORTION) * len(dataset))
+        train_data = dataset[:train_set_size]
+        dev_data   = dataset[train_set_size:]
+    else:
+        train_data = dataset
 
     # create a new model
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
