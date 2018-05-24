@@ -2,23 +2,23 @@ import numpy as np
 import librosa
 import soundfile as sf
 import pickle as pickle
-from .vad import VAD
+from vad import VAD
 
 MIN_SILENT_SEGMENT_LEN_SEC = 0.3
 SLIDING_AVERAGE_WINDOW_SIZE = 9
 
 def get_voice_times(frames, sample_rate, threshold=0, win_size=0.05, hop_size=0.025):
     '''
-    Get the times in which the VAD (Voice Activity Detector) detected voice 
+    Get the times in which the VAD (Voice Activity Detector) detected voice
 
-    Returns: 
+    Returns:
         a list of tuples each contains a voice-segment boundaries
     '''
 
     detector = VAD(fs=sample_rate, win_size_sec=win_size, win_hop_sec=hop_size)
     decisions = list(detector.detect_speech(frames, threshold=threshold))
 
-    # Smooth the binary hard decisions vector with a sliding average 
+    # Smooth the binary hard decisions vector with a sliding average
     slide_size = int(SLIDING_AVERAGE_WINDOW_SIZE / 2)
     smooth_decisions = []
     for i in range(len(decisions)):
@@ -35,14 +35,14 @@ def get_voice_times(frames, sample_rate, threshold=0, win_size=0.05, hop_size=0.
     current_start = 0
     for i, dec in enumerate(decisions):
         if dec and not old_dec:
-            # We want to ignore short non-speech segments, so if the previous speech-end 
+            # We want to ignore short non-speech segments, so if the previous speech-end
             # is too close to this speech-start - remove the last speech segment and keep searching
             if voice_times and ((i * hop_size) - voice_times[-1][1]) < MIN_SILENT_SEGMENT_LEN_SEC:
                 current_start = voice_times[-1][0]
                 voice_times = voice_times[:-1]
             else:
                 current_start = i * hop_size
-        if old_dec and not dec: 
+        if old_dec and not dec:
             voice_times.append((current_start, i * hop_size))
 
         old_dec = dec
@@ -51,7 +51,7 @@ def get_voice_times(frames, sample_rate, threshold=0, win_size=0.05, hop_size=0.
 
 def trim_nonspeech(wav_path_in, sample_rate, wav_path_out):
     '''
-    Get a wav file and create a new wav after cropping the non-speech frames 
+    Get a wav file and create a new wav after cropping the non-speech frames
     '''
 
     frames, rate = librosa.load(wav_path_in, sample_rate)
@@ -69,20 +69,20 @@ def trim_nonspeech(wav_path_in, sample_rate, wav_path_out):
 
 def trim_nonspeech_dir(wav_dir_path_in, sample_rate, wav_dir_path_out):
     '''
-    Get a directory path and trim all the wav files in it using VAD. 
-    The trimmed wav files are placed in 'wav_dir_path_out'. 
+    Get a directory path and trim all the wav files in it using VAD.
+    The trimmed wav files are placed in 'wav_dir_path_out'.
     For each trimmed wav file, we also create a text file (.trim) that
-    stores the voice segments boundaries - this is done in order 
+    stores the voice segments boundaries - this is done in order
     to synchronise between absolute time-indexes and our trimmed file.
     '''
     wav_files  = [fn for fn in os.listdir(wav_dir_path_in) if fn.endswith('.wav')]
-    
+
     # Trim all wav files
     for wav_file in wav_files:
-        src_file_path = os.path.join(wav_dir_path_in, wav_file) 
+        src_file_path = os.path.join(wav_dir_path_in, wav_file)
         dst_file_path = os.path.join(wav_dir_path_out, wav_file)
         trim_file_path = os.path.join(wav_dir_path_out, "%s.trim" % os.path.splitext(wav_file)[0])
-        # trim wav file 
+        # trim wav file
         print('Trimming "%s" and storing the output in "%s"..' % (wav_file, wav_dir_path_out))
         voice_times = trim_nonspeech(src_file_path, sample_rate, dst_file_path)
         # Save a text file that describes the trimmed parts (for later use)
@@ -123,10 +123,3 @@ def fix_segmentation_after_trimming(seg, voice_segments):
         new_seg.append(last_fixed_index + voice_len)
 
     return new_seg
-
-
-
-
-
-
-    
