@@ -441,10 +441,11 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
     '''
     CACHE = os.path.join(dataset_path, ".cached")
 
-    print("==> Loading cached version...")
     if os.path.exists(CACHE):
-        dataset, files = pickle.load(CACHE)
-        return dataset, files
+        print("==> Loading cached version...")
+        with open(CACHE, 'wb') as f:
+            dataset, files = pickle.load(f)
+            return dataset, files
 
     from tqdm import tqdm
     files = []
