@@ -17,7 +17,6 @@ from data_handler import (general_dataset, preaspiration_dataset,
 from model.model import SpeechSegmentor
 
 
-
 DEV_SET_PROPORTION        = 0.3
 TXT_SUFFIX = '.txt'
 DATA_SUFFIX = '.data'
