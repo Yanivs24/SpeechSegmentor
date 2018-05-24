@@ -443,7 +443,7 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
 
     if os.path.exists(CACHE):
         print("==> Loading cached version...")
-        with open(CACHE, 'wb') as f:
+        with open(CACHE, 'rb') as f:
             dataset, files = pickle.load(f)
             return dataset, files
 
