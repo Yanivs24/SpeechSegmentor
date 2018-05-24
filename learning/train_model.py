@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
+from tensorboardX import SummaryWriter
 
 from data_handler import (preaspiration_dataset,
                           switchboard_dataset_after_embeddings, timit_dataset,
@@ -19,6 +20,7 @@ from model.model import SpeechSegmentor
 sys.path.append('./back_end')
 
 DEV_SET_PROPORTION        = 0.3
+writer = SummaryWriter()
 
 
 def convert_to_batches(data, batch_size, is_cuda, fixed_k):
@@ -108,7 +110,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
         # Run train epochs
         train_closs = 0.0
-        for batch, lengths, segmentations in train_batches:
+        n_batches = len(train_batches)
+        for batch_idx, (batch, lengths, segmentations) in enumerate(train_batches):
 
             # Clear gradients (Pytorch accumulates gradients)
             model.zero_grad()
@@ -140,6 +143,11 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             loss = torch.mean(batch_loss)
             print "The avg loss is %s" % str(loss)
             train_closs += float(loss.data[0])
+
+            writer.add_scalars('metrics',
+                               {
+                                 "train_batch_loss": float(loss.data[0])
+                               }, ITER * n_batches + batch_idx)
 
             # Back propagation
             loss.backward()
@@ -228,6 +236,15 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         print "Dev recall: %f" % dev_recall
         print "Dev F1 score: %f" % dev_f1
         print "#####################################################################"
+
+        writer.add_scalars('metrics',
+                           {
+                             "train_epoch_loss": avg_train_loss,
+                             "dev_epoch_loss": avg_dev_loss,
+                             "dev_precision": dev_precision,
+                             "dev_recall": dev_recall,
+                             "dev_f1": dev_f1
+                           }, ITER + 1)
 
         # check if it's the best loss so far (for now we use F1 score)
         if dev_f1 > best_dev_loss:
