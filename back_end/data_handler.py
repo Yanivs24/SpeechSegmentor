@@ -9,6 +9,7 @@ import librosa
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+import cPickle
 
 import soundfile as sf
 from feature_extractor import feature_extractors
@@ -439,6 +440,13 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
     '''
     Get general dataset from the preprocessed files with specific suffix
     '''
+    CACHE = dataset_path + ".cached"
+
+    print("==> Loading cached version...")
+    if os.path.exists(CACHE):
+        dataset, files = pickle.load(CACHE)
+        return dataset, files
+
     from tqdm import tqdm
     files = []
     dataset = []
@@ -451,7 +459,12 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             dataset.append((x_t, y_t[1]))
             files.append(item)
 
+    with open(CACHE, 'wb') as f:
+        pickle.dump((dataset, files), f, protocol=pickle.HIGHEST_PROTOCOL)
+    print("==> Saved to cache")
+
     return dataset, files
+
 
 '''                 DATASETS                      '''
 ''' ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ '''
