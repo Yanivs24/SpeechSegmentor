@@ -456,7 +456,7 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             x_t = np.loadtxt(os.path.join(dataset_path, item))
             # read labels
             y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))
-            dataset.append((x_t, y_t[1]))
+            dataset.append((torch.FloatTensor(x_t), y_t[1]))
             files.append(item)
 
     if not os.path.exists(CACHE):
