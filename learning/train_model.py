@@ -18,7 +18,7 @@ from tensorboardX import SummaryWriter
 from data_handler import (preaspiration_dataset,
                           switchboard_dataset_after_embeddings, timit_dataset,
                           toy_dataset, general_dataset)
-from model.model import SpeechSegmentor
+from learning.model.model import SpeechSegmentor
 
 
 DEV_SET_PROPORTION        = 0.3
