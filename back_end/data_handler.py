@@ -9,7 +9,7 @@ import librosa
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-import cPickle as pickle
+import pickle
 
 import soundfile as sf
 from feature_extractor import feature_extractors
