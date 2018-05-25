@@ -5,7 +5,7 @@ import argparse
 import random
 import sys
 import time
-
+from tqdm import tqdm
 import pandas as pd
 import numpy as np
 import torch
@@ -111,7 +111,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     best_dev_loss = 0
     consecutive_no_improve = 0
     print('Start training the model..')
-    for ITER in xrange(iterations):
+    for ITER in range(iterations):
         print('-------- Epoch #%d --------' % (ITER+1))
 
         random.shuffle(train_batches)
@@ -120,7 +120,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         # Run train epochs
         train_closs = 0.0
         n_batches = len(train_batches)
-        for batch_idx, (batch, lengths, segmentations) in enumerate(train_batches):
+        for batch_idx, (batch, lengths, segmentations) in enumerate(tqdm(train_batches)):
 
             # Clear gradients (Pytorch accumulates gradients)
             model.zero_grad()
@@ -232,9 +232,10 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             avg_dev_taskloss = dev_ctaskloss / len(dev_batches)
 
         # Evaluate performence
-        dev_precision = float(dev_precision_counter) / dev_pred_counter
-        dev_recall    = float(dev_recall_counter) / dev_gold_counter
-        dev_f1        = (2 * (dev_precision*dev_recall) / (dev_precision+dev_recall))
+        EPS = 1e-5
+        dev_precision = float(dev_precision_counter) / (dev_pred_counter+EPS)
+        dev_recall    = float(dev_recall_counter) / (dev_gold_counter+EPS)
+        dev_f1        = (2 * (dev_precision*dev_recall) / (dev_precision+dev_recall+EPS))
 
         print("#####################################################################")
         print("Results for Epoch #%d" % (ITER+1))
@@ -256,8 +257,8 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                              "dev_f1": dev_f1
                            }, ITER + 1)
         # log metrics to dataframe for later evaluation
-        epoch_metrics[ITER] = [avg_train_loss, avg_dev_loss, dev_precision,
-                               dev_recall, dev_f1]
+        epoch_metrics.loc[ITER] = (avg_train_loss, avg_dev_loss, dev_precision,
+                                   dev_recall, dev_f1)
 
         # check if it's the best loss so far (for now we use F1 score)
         if dev_f1 > best_dev_loss:
