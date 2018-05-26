@@ -103,7 +103,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     # Use Adam optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
-    best_dev_loss = 0
+    best_dev_loss = float("inf")
     consecutive_no_improve = 0
     print('Start training the model..')
     for ITER in xrange(iterations):
@@ -208,6 +208,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             loss = torch.mean(batch_loss)
 
+            # For debugging
             print(segmentations)
             print('------------------------------------------------------------')
             print(pred_segmentations)
@@ -250,9 +251,9 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                              "dev_f1": dev_f1
                            }, ITER + 1)
 
-        # check if it's the best loss so far (for now we use F1 score)
-        if dev_f1 > best_dev_loss:
-            best_dev_loss = dev_f1
+        # Check if it's the best loss so far on the validation set
+        if avg_dev_loss < best_dev_loss:
+            best_dev_loss = avg_dev_loss
             consecutive_no_improve = 0
             # store parameters after each loss improvement
             print('Best dev loss so far - storing parameters in %s' % params_file)
@@ -287,7 +288,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
     parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.001, type=float)
     parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
-    parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
+    parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and use them as a fixed embedding layer', default='')
     args = parser.parse_args()
 
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
