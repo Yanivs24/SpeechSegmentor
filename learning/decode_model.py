@@ -6,14 +6,13 @@ import sys
 import numpy as np
 import torch
 
-from data_handler import (preaspiration_dataset,
-                          switchboard_dataset_after_embeddings, timit_dataset,
-                          toy_dataset)
 from model.model import SpeechSegmentor
 from train_model import convert_to_batches
 
 sys.path.append('./back_end')
-
+from data_handler import (preaspiration_dataset,
+                          switchboard_dataset_after_embeddings, timit_dataset,
+                          toy_dataset)
 
 def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
