@@ -226,6 +226,7 @@ class SpeechSegmentor(nn.Module):
         '''
 
         seq_length = batch.size(1)
+        y_start, y_end = int(y_start), int(y_end)
 
         try:
             if self.SUM_MODE:
@@ -295,7 +296,8 @@ class SpeechSegmentor(nn.Module):
             scores = scores.cuda()
 
         for batch_ind, seg in enumerate(segmentations):
-            last_index = lengths[batch_ind].data.cpu().numpy()[0] - 1
+            # last_index = lengths[batch_ind].data.cpu().numpy()[0] - 1  # this is not compatible with pytorch 0.4
+            last_index = lengths[batch_ind].data.cpu().numpy() - 1
             # Add segment boundaries
             full_seg = [0] + list(seg) + [last_index]
             # Remove duplicates
@@ -543,7 +545,8 @@ class SpeechSegmentor(nn.Module):
         # in the batch
         pred_seg = []
         for i, seg in enumerate(segmentations):
-            last_index = lengths[i].data.cpu().numpy()[0] - 1
+            # last_index = lengths[i].data.cpu().numpy()[0] - 1 # this is not compatible with pytorch 0.4
+            last_index = lengths[i].data.cpu().numpy() - 1
             # Append the segmentation after removing sequence boundaries
             pred_seg.append(seg[last_index][1:-1])
 

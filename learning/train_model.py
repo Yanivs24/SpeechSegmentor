@@ -323,12 +323,14 @@ def main(args):
     elif args.dataset == 'vot' or args.dataset == 'word':
         print('==> Using VOT dataset')
         dataset = general_dataset(args.train_path, TXT_SUFFIX)
+        args.max_segment_size = dataset.max_seg_size
         if args.val_path:
             dev_data = general_dataset(args.val_path, TXT_SUFFIX)
 
     elif args.dataset == 'vowel':
         print('==> Using Vowel dataset')
         dataset = general_dataset(args.train_path, DATA_SUFFIX)
+        args.max_segment_size = dataset.max_seg_size
         if args.val_path:
             dev_data = general_dataset(args.val_path, DATA_SUFFIX)
 

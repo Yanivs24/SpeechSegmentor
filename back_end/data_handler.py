@@ -444,12 +444,13 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
     if os.path.exists(CACHE):
         print("==> Loading cached version...")
         with open(CACHE, 'rb') as f:
-            dataset, files = pickle.load(f)
-            return dataset, files
+            dataset, files, max_seg_size = pickle.load(f)
+            return dataset, files, max_seg_size
 
     from tqdm import tqdm
     files = []
     dataset = []
+    max_seg_size = 0
     for item in tqdm(os.listdir(dataset_path)):
         if item.endswith(suffix_x):
             # read data
@@ -458,14 +459,19 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))
             dataset.append((torch.FloatTensor(x_t), y_t[1]))
             files.append(item)
+            # get max_seg_size
+            current_max_seg_size = int(max(y_t[1, 1:] - y_t[1, :-1]))
+            if current_max_seg_size > max_seg_size:
+                max_seg_size = current_max_seg_size
 
     if not os.path.exists(CACHE):
         with open(CACHE, 'wb') as f:
-            pickle.dump((dataset, files), f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump((dataset, files, max_seg_size), f, protocol=pickle.HIGHEST_PROTOCOL)
         print("==> Saved to cache")
+    print("==> detected max_seg_size {}".format(max_seg_size))
 
 
-    return dataset, files
+    return dataset, files, max_seg_size
 
 
 '''                 DATASETS                      '''
@@ -507,7 +513,7 @@ class preaspiration_dataset(Dataset):
 
 class general_dataset(Dataset):
     def __init__(self, dataset_path, suffix):
-        self.data, self.files = load_txtdata(dataset_path, suffix)
+        self.data, self.files, self.max_seg_size = load_txtdata(dataset_path, suffix)
         self.input_size = self.data[0][0].size(1)
 
     def __len__(self):

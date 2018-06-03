@@ -30,7 +30,8 @@ experiment_name = "{}_{}".format(time.strftime("%H_%M"), time.strftime("%d_%m_%Y
 experiment_folder = os.path.join(experiments_folder, experiment_name)
 if not os.path.exists(experiments_folder):
     os.mkdir(experiments_folder)
-os.mkdir(experiment_folder)
+if not os.path.exists(experiment_folder):
+    os.mkdir(experiment_folder)
 
 # create grid
 grids = {'learning_rate': [0.1, 0.01, 0.001],
