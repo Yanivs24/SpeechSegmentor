@@ -155,7 +155,7 @@ def plot_binary_scores(model, batches, num_of_frames=150):
 def plot_sums_tsne(model, batches):
     # Calc RNN of the first batch
 
-    tsne, phonemes = model.get_sums_tsne(batches[:5])
+    tsne, phonemes = model.get_sums_tsne(batches[:10])
 
     colors = cm.rainbow(np.linspace(0, 1, 10))
 
@@ -182,7 +182,7 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
     # Experiments
     #####################################################
-    #plot_sums_tsne(model, batches)
+    plot_sums_tsne(model, batches)
     plot_binary_scores(model, batches)
     plot_unary_scores(model, batches, position=0)
     plot_unary_scores(model, batches, position=1)
