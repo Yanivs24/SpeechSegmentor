@@ -104,15 +104,11 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     # Use Adam optimizer
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
-<<<<<<< HEAD
 
     epoch_metrics = pd.DataFrame(columns=['train_epoch_loss', 'dev_epoch_loss',
                                           'dev_precision', 'dev_recall',
                                           'dev_f1'])
-    best_dev_loss = 0
-=======
     best_dev_loss = float("inf")
->>>>>>> master
     consecutive_no_improve = 0
     print('Start training the model..')
     for ITER in range(iterations):
@@ -284,32 +280,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     return epoch_metrics
 
 
-<<<<<<< HEAD
 def main(args):
-=======
-if __name__ == '__main__':
-
-      # -------------MENU-------------- #
-    # command line arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument("train_path", help="A path to the training set")
-    parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
-    parser.add_argument("--val_path", help="A path to the training set", default=None)
-    parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit/vot/word/vowel", default='sb')
-    parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
-    parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
-    parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
-    parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=5, type=int)
-    parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
-    parser.add_argument("--init_params", help="Start training from a set of pretrained parameters", default='')
-    parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=False)
-    parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
-    parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.001, type=float)
-    parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
-    parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and use them as a fixed embedding layer', default='')
-    args = parser.parse_args()
-
->>>>>>> master
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
 
     if args.is_cuda:
