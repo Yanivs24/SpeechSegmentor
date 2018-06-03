@@ -4,6 +4,8 @@ import torch.nn as nn
 from torch.autograd import Variable
 import numpy as np
 from collections import OrderedDict
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 
 DEFAULT_FEATURE_SIZE = 20
 
@@ -60,6 +62,7 @@ class SpeechSegmentor(nn.Module):
         # Backward RNN (for segmental RNN)
         self.RNN_B = nn.LSTM(rnn_input_dim, rnn_output_dim, num_layers=1, batch_first=True, dropout=0.3)
 
+        self.last_mlp_input_len = 4 * rnn_output_dim + sum_mlp_hid_dims[1], output_mlp_hid_dim
         if self.SUM_MODE:
             # Sum MLP hidden layers (we use them only in sum mode)
             self.mlp_linear1 = nn.Linear(2 * rnn_output_dim, sum_mlp_hid_dims[0])
@@ -208,6 +211,121 @@ class SpeechSegmentor(nn.Module):
         hidden = self.mlp_activation(self.mlp_output1(input))
         return self.mlp_output2(hidden)
 
+    def get_unary_scores(self, batch, position=0):
+
+        batch_size = batch.size(0)
+        seq_len    = batch.size(1)
+
+        birnn_len = 200
+        mlp_sum_len = 200
+
+        # Get all unary score
+        scores = np.zeros(seq_len)
+        for i in range(seq_len):
+            # Get RNN
+            birnn_i = self.BiRNN_vals[:, i, :]
+            
+            # Concatenate the BiRNNs with zeros in all the other places
+            if position == 0:
+                features = torch.cat((birnn_i,
+                                      Variable(torch.zeros(batch_size, birnn_len)),
+                                      Variable(torch.zeros(batch_size, mlp_sum_len))),
+                                      dim=1)
+            else:
+                features = torch.cat((Variable(torch.zeros(batch_size, birnn_len)),
+                                      birnn_i,
+                                      Variable(torch.zeros(batch_size, mlp_sum_len))),
+                                      dim=1)
+
+            # Take only the first example
+            scores[i] = self.mlp_output_layer(features)[0].data.numpy()
+
+        return scores
+
+    def get_binary_scores(self, batch):
+
+        seq_len    = batch.size(1)
+        birnn_len = 200
+
+        # Get all the (i,j) scores
+        scores = np.zeros((seq_len, seq_len))
+        for i in range(seq_len-1):
+            for j in range(i, seq_len):
+                # Get RNN
+                if i == 0:
+                    birnn_sum = self.BiRNN_sums[:, j, :]
+                else:
+                    birnn_sum = self.BiRNN_sums[:, j, :] - self.BiRNN_sums[:, i-1, :]
+                
+                # Concatenate the BiRNNs with zeros in all the other places
+                features = torch.cat((self.BiRNN_vals[:, i, :],
+                                      self.BiRNN_vals[:, j, :],
+                                      self.mlp_sum_layer(birnn_sum)),
+                                      dim=1)
+                
+                # Take only the first example
+                scores[j][i] = self.mlp_output_layer(features)[0].data.numpy()
+
+        return scores
+
+    def get_sums_tsne(self, examples):
+
+        mlp_sum_len = 200
+
+        all_scores   = []
+        all_phonemes = []
+        for ex in examples:
+            batch, lengths, segmentations, phonemes = ex
+            # Calc for later
+            self.calc_birnn_sums(batch, lengths)
+
+            # Loop over the batch elements
+            for i, couple in enumerate(zip(segmentations,phonemes)):
+                seg, phon = couple
+
+                scores = np.zeros((len(seg), mlp_sum_len))
+                seg = [0] + seg
+                num_of_segments = 0
+                # Get all the (i,j) scores of this sequence
+                for j in range(len(seg)-1):
+                    # Skip phonemes - we only look at subset of the phonemes
+                    if phon[j] >= 10:
+                        continue
+                    y_start = seg[j]
+                    y_end   = seg[j+1]
+
+                    # Get birnn sum over the segment
+                    if y_start == 0:
+                        birnn_sum = self.BiRNN_sums[i, y_end, :]
+                    else:
+                        birnn_sum = self.BiRNN_sums[i, y_end, :] - self.BiRNN_sums[i, y_start-1, :]
+
+                    # Get sum tsne
+                    scores[num_of_segments] = self.mlp_sum_layer(birnn_sum).data.numpy()
+                    all_phonemes.append(phon[j])
+                    num_of_segments += 1
+                
+                # Add scores      
+                all_scores.append(scores[:num_of_segments])
+
+        # Group together all scores
+        scores = np.concatenate(all_scores)
+
+        print('Using total %d vectors for T-SNE' % len(scores))
+        print('Got total %d phonemes' % len(scores))
+
+        # Do PCA first to reduce dim from 200 to 50 
+        print('Calculating PCA...')
+        pca_50 = PCA(n_components=50)
+        pca_result_50 = pca_50.fit_transform(scores)
+
+        print('Calculating T-SNE...')
+        score_tsne = TSNE(n_components=2).fit_transform(pca_result_50)  
+
+        return score_tsne, all_phonemes
+
+
+
     def get_local_score(self, batch, y_start, y_end):
         '''
         Get the local score of the segment seq[y_start: y_end] for each sequence
@@ -224,7 +342,6 @@ class SpeechSegmentor(nn.Module):
             Here we calculate the feature representation of the given segment
             (i.e. phi(seq, y_i, y_i+1)) and feed it into a MLP that produces scalar output (score).
         '''
-
         seq_length = batch.size(1)
 
         try:

@@ -23,11 +23,18 @@ MARK_PREFIX      = 'sw'
 SEG_EXTENSION    = 'seg'
 H5_EXTENSION     = 'h5'
 SCORES_EXTENSION = 'scores'
+PHONEMES_EXTENSION = 'phonemes'
 
 DIST_EXTENSION  = 'dist'
 START_TIMES_EXTENSION  = 'start_times'
 
 PREASPIRATION_NUM_OF_FEATURES = 8
+
+
+ALL_PHONEMES = ['er', 'r', 't', 'y', 'ng', 's', 'd', 'el', 'iy', 'k', 'ay', 'uh',
+                'en', 'ae', 'eh', 'ah', 'ao', 'ih', 'ch', 'ey', 'aw', 'sil',
+                'sh', 'th', 'oy', 'dh', 'ow', 'hh', 'jh', 'dx', 'b', 'g', 'f',
+                'm', 'p', 'w', 'v', 'z', 'uw']
 
 
 def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_size, run_over=False, **kwargs):
@@ -352,24 +359,27 @@ def load_preaspiration(dataset_path):
     return dataset
 
 def load_timit(dataset_path):
-    '''
+    '''    
     Get timit dataset from the preprocessed files
     '''
-    print("Loading timing dataset from '%s'" % dataset_path)
+    print "Loading timing dataset from '%s'" % dataset_path
     scores_ids = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(SCORES_EXTENSION)]
     dist_ids   = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(DIST_EXTENSION)]
     labels_ids = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(START_TIMES_EXTENSION)]
+    phoneme_ids = [os.path.splitext(f)[0] for f in os.listdir(dataset_path) if f.endswith(PHONEMES_EXTENSION)]
 
     # intesection between dist files and label files (as we need both)
-    file_ids = set(dist_ids) & set(labels_ids) & set(scores_ids)
+    file_ids = set(dist_ids) & set(labels_ids) & set(scores_ids) & set(phoneme_ids)
 
-    print('Constructing dataset from %d files..' % len(file_ids))
+    print 'Constructing dataset from %d files..' % len(file_ids)
     dataset = []
     skipped_counter = 0
+    indexed_phoneme = {p: i for i,p in enumerate(ALL_PHONEMES)}
     for fid in file_ids:
         scores_file_path  = os.path.join(dataset_path, '{0}.{1}'.format(fid, SCORES_EXTENSION))
         dist_file_path    = os.path.join(dataset_path, '{0}.{1}'.format(fid, DIST_EXTENSION))
         seg_file_path     = os.path.join(dataset_path, '{0}.{1}'.format(fid, START_TIMES_EXTENSION))
+        phoneme_file_path = os.path.join(dataset_path, '{0}.{1}'.format(fid, PHONEMES_EXTENSION))
 
         # Read MFCCs from the file
         scores = np.loadtxt(scores_file_path, skiprows=1)
@@ -377,18 +387,29 @@ def load_timit(dataset_path):
         dists = np.loadtxt(dist_file_path, skiprows=1)
         # Read segmentation
         seg = np.loadtxt(seg_file_path)
+        # Read phonemes and convert them into indexes
+        phonemes_strings = open(phoneme_file_path).read().splitlines()
+        phonemes = [indexed_phoneme[p] for p in phonemes_strings]
 
         # Ignore the boundaries and fix the segmentation accordinly
+        skip_start = len(seg[seg<=4]) - 1
+        skip_end   = len(seg[seg>=(dists.shape[0]-3)])
+
         seg = [t-4 for t in seg if t > 4 and t < (dists.shape[0]-3)]
         scores = scores[4:-3, :]
         dists = dists[4:-3, :]
+
+        # Fix phonemes
+        assert(skip_start >= 0)
+        phonemes = phonemes[skip_start: len(phonemes)-skip_end]
+        assert(len(phonemes) == len(seg)+1)
 
         # Skip samples with big segments (over 500ms), should be few files
         skip_file = False
         full_seg = [0] + seg + [len(scores)-1]
         for i in range(len(full_seg)-1):
             if full_seg[i+1]-full_seg[i] >= 50:
-                print('Got big segment: {0}-{1}, skipping file: {2}.'.format(full_seg[i], full_seg[i+1], fid))
+                print 'Got big segment: {0}-{1}, skipping file: {2}.'.format(full_seg[i], full_seg[i+1], fid)
                 skip_file = True
                 break
 
@@ -396,16 +417,24 @@ def load_timit(dataset_path):
             skipped_counter += 1
             continue
 
+        # Remove the first phone which correspondes to the segment 0-seg[0]
+        #phonemes = phonemes[1:]
+        #assert(len(phonemes) == len(seg))
+        # print 'file:', fid
+        # print 'seg:', seg
+        # print 'phonemes:', phonemes
+        # exit()
+
         # Concatenate the MFCC vectors with the distances (we add 4 features)
         features = np.concatenate((scores, dists), axis=1)
-
+        
         # Convert the features into torch tensor
         features = torch.FloatTensor(features)
 
         # Add the conversation to the dataset
-        dataset.append((features, seg))
+        dataset.append((features, seg, phonemes))
 
-    print('Skipped total %d files' % skipped_counter)
+    print 'Skipped total %d files' % skipped_counter
 
     # Sort by k (num of segments) to allow batching later
     sorted_dataset = sorted(dataset, key=lambda x: len(x[1]))

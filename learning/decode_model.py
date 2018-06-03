@@ -5,14 +5,172 @@ import sys
 
 import numpy as np
 import torch
+from torch.autograd import Variable
 
 from model.model import SpeechSegmentor
-from train_model import convert_to_batches
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.patches as mpatches
+
+plt.rcParams.update({'mathtext.default':  'regular' })
+#from mpl_toolkits import mplot3d
+#from matplotlib import cm
+#from matplotlib.ticker import LinearLocator, FormatStrFormatter
+import seaborn as sns
 
 sys.path.append('./back_end')
 from data_handler import (preaspiration_dataset,
                           switchboard_dataset_after_embeddings, timit_dataset,
                           toy_dataset)
+
+from data_handler import ALL_PHONEMES
+
+
+def convert_to_batches(data, batch_size, is_cuda, fixed_k):
+    """
+    Data: list of tuples each from the format: (tensor, label)
+          where the tensor should be 2d contatining features
+          for each time frame.  
+
+    Output: A list contating tuples from the format: (batch_tensor, lengths, phonemes)      
+    """
+
+    num_of_examples = len(data)
+
+    # Loop over the examples and gather them into padded batches
+    batches = []
+    i = 0
+    while i < num_of_examples:
+
+        # Gather examples with the same number of segments - k (batching can only work if
+        # k is fixed along the batch examples)
+        if fixed_k:
+            first_k = len(data[i][1])
+            count = 0
+            while (i+count < num_of_examples) and (first_k == len(data[i+count][1])):
+                count += 1
+
+            cur_batch_size = min(count, batch_size)
+        else:
+            cur_batch_size = min(num_of_examples-i, batch_size)
+
+        # Get tensors, phonemes and the segmentation
+        tensors  = [ex[0] for ex in data[i:i+cur_batch_size]]
+        segments = [ex[1] for ex in data[i:i+cur_batch_size]]
+        # phonemes
+        phonemes = [ex[2] for ex in data[i:i+cur_batch_size]]
+
+        k = len(segments[0])
+        num_of_segments = k+1
+
+        # Get sizes
+        max_length = max([ten.size(0) for ten in tensors])
+        features_length = tensors[0].size(1)
+
+        # Get a padded batch tensor
+        padded_batch = torch.zeros(cur_batch_size, max_length, features_length)
+
+        lengths = []
+        for j,ten in enumerate(tensors):
+            current_length = ten.size(0)
+            padded_batch[j] = torch.cat([ten, torch.zeros(max_length - current_length, features_length)])
+            lengths.append(current_length)
+
+        # Convert to variables
+        padded_batch = Variable(padded_batch)
+        lengths = Variable(torch.LongTensor(lengths))
+
+        if is_cuda:
+            padded_batch = padded_batch.cuda()
+            lengths = lengths.cuda()
+
+        # Add it to the batches list along with the real lengths and phonemes
+        batches.append((padded_batch, lengths, segments, phonemes))
+
+        # Progress i for the next batch
+        i += cur_batch_size
+
+    return batches
+
+
+def plot_unary_scores(model, batches, position=0, num_of_frames=150):
+    # Calc RNN of the first batch
+    batch, lengths, segmentations, phonemes = batches[0]
+    model.calc_birnn_sums(batch, lengths)
+
+    num_of_frames = min(num_of_frames, batch.size(1))
+
+    # Score for the first position
+    scores = model.get_unary_scores(batch, position=position)
+    scores = scores[:num_of_frames]
+
+    xposition = [t for t in segmentations[0] if t < num_of_frames]
+
+    # Add scores to plot
+    plt.plot(scores, label='scores', linewidth=2.5)
+
+    # Add gold boundaries
+    for xc in xposition:
+        plt.axvline(x=xc, color='r', linestyle='dotted')
+
+    if position == 0:
+        plt.title('$y_i$ scores')
+    else:
+        plt.title('$y_{i+1}$ scores')
+    plt.xlabel('Frame number', fontsize=14)
+    plt.ylabel('Score', fontsize=14)
+
+    # Turn off y labels
+    #plt.yticks([])
+
+    plt.show()
+
+def plot_binary_scores(model, batches, num_of_frames=150):
+
+    # Calc RNN of the first batch
+    batch, lengths, segmentations, phonemes = batches[0]
+    model.calc_birnn_sums(batch, lengths)
+
+    num_of_frames = min(num_of_frames, batch.size(1))
+
+    # get scores for all the possible (i,j) couples
+    scores = model.get_binary_scores(batch)
+    scores = scores[:num_of_frames, :num_of_frames]
+    seg = [t for t in segmentations[0] if t < num_of_frames]
+
+    # Creatre heatmap - ignore uninizilized values (zeros)
+    sns.set()
+    sns.heatmap(scores, mask=(scores==0))
+
+    # Plot gold segmentation points
+    plt.plot(seg[:-1], seg[1:], 'ro',  markersize=5)
+
+    # Info
+    plt.title('Pairwise Scores')
+    plt.xlabel('$y_i$', fontsize=14)
+    plt.ylabel('$y_{i+1}$', fontsize=14)
+
+    plt.show()
+
+def plot_sums_tsne(model, batches):
+    # Calc RNN of the first batch
+
+    tsne, phonemes = model.get_sums_tsne(batches[:5])
+
+    colors = cm.rainbow(np.linspace(0, 1, 10))
+
+    # Draw t-sne according to the phoneme 
+    for i in range(len(tsne)):
+        plt.plot(tsne[i, 0], tsne[i, 1], 'ro', color=colors[int(phonemes[i])], markersize=5)
+
+    # Build color map legend
+    patches = []
+    for j,c in enumerate(colors):
+        patches.append(mpatches.Patch(color=c, label=ALL_PHONEMES[j]))
+
+    plt.legend(handles=patches)
+    plt.show()
+
 
 def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
@@ -21,6 +179,16 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
     # Convert data to torch batches and loop over them
     batches = convert_to_batches(dataset, batch_size, is_cuda, use_k)
+
+    # Experiments
+    #####################################################
+    #plot_sums_tsne(model, batches)
+    plot_binary_scores(model, batches)
+    plot_unary_scores(model, batches, position=0)
+    plot_unary_scores(model, batches, position=1)
+    exit()
+    #####################################################
+
     for batch, lengths, segmentations in batches:
 
         # k Value to be sent to the model
@@ -211,3 +379,5 @@ if __name__ == '__main__':
                 batch_size=args.batch_size,
                 is_cuda=args.is_cuda,
                 use_k=args.use_k)
+
+
