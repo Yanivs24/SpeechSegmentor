@@ -34,9 +34,9 @@ if not os.path.exists(experiment_folder):
     os.mkdir(experiment_folder)
 
 # create grid
-grids = {'learning_rate': [0.1, 0.01, 0.001],
-         'use_k': [False],
-         'task_loss_coef': [0.001, 0.01]}
+grids = {'learning_rate': [0.00005],
+         'use_k': [True],
+         'task_loss_coef': [0.001]}
 cartesian_product = (dict(zip(grids, x)) for x in itertools.product(*grids.values()))
 
 # search the grid
@@ -45,7 +45,7 @@ for sub_exp_idx, combination in enumerate(cartesian_product):
     for k, v in combination.items():
         dargs[k] = v
     dargs['params_path'] = sub_exp_name + ".model"
-    print("==> running {}".format(args))
+    # print("==> running {}".format(args))
     metrics_df = main(args)
     metrics_df.to_csv(sub_exp_name + ".csv", sep='\t')
     with open(sub_exp_name + ".txt", 'w') as f:

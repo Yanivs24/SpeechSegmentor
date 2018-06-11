@@ -445,6 +445,7 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
         print("==> Loading cached version...")
         with open(CACHE, 'rb') as f:
             dataset, files, max_seg_size = pickle.load(f)
+            print("==> detected max_seg_size {}".format(max_seg_size))
             return dataset, files, max_seg_size
 
     from tqdm import tqdm
@@ -460,7 +461,8 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             dataset.append((torch.FloatTensor(x_t), y_t[1]))
             files.append(item)
             # get max_seg_size
-            current_max_seg_size = int(max(y_t[1, 1:] - y_t[1, :-1]))
+            # current_max_seg_size = int(max(max(y_t[1, 1:] - y_t[1, :-1]), y_t[1, 0], len(x_t) - y_t[1, 1]))
+            current_max_seg_size = int(y_t[1, 1] - y_t[1, 0])
             if current_max_seg_size > max_seg_size:
                 max_seg_size = current_max_seg_size
 

@@ -296,13 +296,13 @@ class SpeechSegmentor(nn.Module):
             scores = scores.cuda()
 
         for batch_ind, seg in enumerate(segmentations):
-            # last_index = lengths[batch_ind].data.cpu().numpy()[0] - 1  # this is not compatible with pytorch 0.4
-            last_index = lengths[batch_ind].data.cpu().numpy() - 1
+            last_index = lengths[batch_ind].data.cpu().numpy()[0] - 1  # this is not compatible with pytorch 0.4
             # Add segment boundaries
             full_seg = [0] + list(seg) + [last_index]
             # Remove duplicates
             full_seg = list(OrderedDict((x, True) for x in full_seg).keys())
-            local_scores = [self.get_local_score(batch, full_seg[i], full_seg[i+1])[batch_ind] for i in range(len(full_seg)-1)]
+            #local_scores = [self.get_local_score(batch, full_seg[i], full_seg[i+1])[batch_ind] for i in range(len(full_seg)-1)]
+            local_scores = [self.get_local_score(batch, int(seg[0]), int(seg[1]))[batch_ind]]
             scores[batch_ind] = sum(local_scores)
 
         return scores
@@ -365,7 +365,7 @@ class SpeechSegmentor(nn.Module):
             self.calc_birnn_sums(batch, lengths)
         else:
             self.calc_all_rnns(batch)
-        print(("calc_all_rnns: %s seconds ---" % (time.time() - start_time)))
+        print("calc_all_rnns: %s seconds ---" % (time.time() - start_time))
 
         batch_size = batch.size(0)
         max_length = batch.size(1)
@@ -373,6 +373,7 @@ class SpeechSegmentor(nn.Module):
         # Perform infernece when k (number of segments) is given
         if k is not None:
             # Get the scores of all the possible segments
+            # local_scores[:, j, i] stores the score of segment that starts in j and ends in i
             local_scores = Variable(torch.zeros(batch_size, max_length, max_length))
             if self.is_cuda:
                 local_scores = local_scores.cuda()
@@ -408,7 +409,7 @@ class SpeechSegmentor(nn.Module):
 
         return pred_seg, final_scores
 
-    def exact_inference(self, local_scores, lengths, k, gold_labels=None):
+    def exact_inference1(self, local_scores, lengths, k, gold_labels=None):
         '''
         Apply dynamic programming algorithm for finding the best segmentation when
         k (the number of segments) is known.
@@ -427,6 +428,8 @@ class SpeechSegmentor(nn.Module):
         # Convert from time-points (labels) to num of segments
         num_of_segments = k + 1
 
+        # M[:, i, j] - score of segment i ends at index j
+        # M_idcs[:, i, j] - start index of segment i that ends at index j
         M = np.zeros((batch_size, num_of_segments, n))
         M_idcs = np.zeros((batch_size, num_of_segments, n))
         M.fill(-np.inf)
@@ -441,8 +444,10 @@ class SpeechSegmentor(nn.Module):
         M[:, 0, 0] = np.zeros(batch_size)
 
         # recursion - loop over all the segments
+        # i - represents segment i
         for i in range(1, num_of_segments):
             # loop over possible onsets for the i+1 segment
+            # j - represents end of segment i
             for j in range(i, n):
                 best_indexes =  np.empty(batch_size)
                 best_indexes.fill(-1)
@@ -450,10 +455,12 @@ class SpeechSegmentor(nn.Module):
                 max_scores.fill(-np.inf)
                 start_index = max(0, j-self.max_segment_size)
                 # loop over possible onsets for the ith segment
+                # t - represents start of segment i
                 for t in range(start_index, j):
                     s = local_scores[:, t, j]
 
                     # perform loss augmented inference or not
+                    # score for segment i to start at t and end in j = the score of segment i-1 to end in t + local score from t to j
                     if gold_labels is not None:
                         current_score = M[:, i - 1, t] + s.data.cpu().numpy() + self.task_loss_coef*self.local_task_loss(t, gold_labels[:, i-1]).numpy()
                     else:
@@ -469,13 +476,48 @@ class SpeechSegmentor(nn.Module):
                 M_idcs[:, i, j] = best_indexes
 
         # back-tracking - for each element in the batch separately
+        # finds best segmentation for each element in batch
         for i in range(batch_size):
             last_index = lengths[i].data.cpu().numpy()[0] - 1
+            # find the start of the last segment
             onsets[i,-1] = M_idcs[i, num_of_segments - 1, last_index]
             for j in range(1, num_of_segments - 1):
+                # find the start of the previous segment according to last segment found
                 onsets[i, -1 - j] = M_idcs[i,num_of_segments - j - 1, int(onsets[i,-j])]
 
+        print("ground truth:", gold_labels)
+        print("yhat:", onsets)
         return onsets
+
+    def exact_inference(self, local_scores, lengths, k, gold_labels=None):
+        print("start exact_inference")
+        batch_size = local_scores.size(0)
+        n = local_scores.size(1)
+        num_of_segments = k + 1
+        M = np.zeros((batch_size))
+        M.fill(-np.float("inf"))
+        min_segment_size = 20
+        onsets = np.zeros((batch_size, num_of_segments-1))
+
+        for i in range(0, n - 2 * min_segment_size):
+            for j in range(i + min_segment_size, min(i + self.max_segment_size, n - min_segment_size)):
+                # score = local_scores[:, 0, i] + local_scores[:, i, j] + local_scores[:, j, n-1]
+                score = local_scores[:, i, j]
+                if gold_labels is not None:
+                    score.data += self.task_loss_coef * self.local_task_loss(i, gold_labels[:, 0])
+                    score.data += self.task_loss_coef * self.local_task_loss(j, gold_labels[:, 1])
+
+                valid_range = j < lengths.data.numpy() # check j is smaller than max len
+                idx = score.data.numpy() > M # find where current score improves the max
+                idx = idx * valid_range # take indexes that improve the max and are valid
+                M[idx] = score.data.numpy()[idx] # update max
+                onsets[idx] = np.array([i, j]) # update onsets
+
+        print(gold_labels)
+        print(onsets)
+        print("finished exact_inference")
+        return onsets
+
 
     def broad_inference(self, batch, lengths, gold_seg=None):
         '''
@@ -545,8 +587,7 @@ class SpeechSegmentor(nn.Module):
         # in the batch
         pred_seg = []
         for i, seg in enumerate(segmentations):
-            # last_index = lengths[i].data.cpu().numpy()[0] - 1 # this is not compatible with pytorch 0.4
-            last_index = lengths[i].data.cpu().numpy() - 1
+            last_index = lengths[i].data.cpu().numpy()[0] - 1 # this is not compatible with pytorch 0.4
             # Append the segmentation after removing sequence boundaries
             pred_seg.append(seg[last_index][1:-1])
 
