@@ -1,8 +1,8 @@
 import pickle as pickle
 import os
-import random
 from collections import OrderedDict
 from shutil import copyfile
+from tqdm import tqdm
 
 import h5py
 import librosa
@@ -448,7 +448,6 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             print("==> detected max_seg_size {}".format(max_seg_size))
             return dataset, files, max_seg_size
 
-    from tqdm import tqdm
     files = []
     dataset = []
     max_seg_size = 0

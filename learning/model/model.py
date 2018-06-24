@@ -32,8 +32,8 @@ class NotFoundRNNsError(Exception):
 
 class SpeechSegmentor(nn.Module):
     def __init__(self, rnn_input_dim=DEFAULT_FEATURE_SIZE,
-                 rnn_output_dim=100, sum_mlp_hid_dims=(200, 200),
-                 output_mlp_hid_dim=200, is_cuda=True, use_srnn=False,
+                 rnn_output_dim=80, sum_mlp_hid_dims=(100, 100),
+                 output_mlp_hid_dim=100, is_cuda=True, use_srnn=False,
                  use_task_loss=False, task_loss_coef=0.001, max_segment_size=120,
                  load_lstm_from_file='', load_from_file=''):
 
@@ -297,6 +297,8 @@ class SpeechSegmentor(nn.Module):
 
         for batch_ind, seg in enumerate(segmentations):
             last_index = lengths[batch_ind].data.cpu().numpy()[0] - 1  # this is not compatible with pytorch 0.4
+            # this is for supporting older pytorch versions
+            last_index = int(last_index)
             # Add segment boundaries
             full_seg = [0] + list(seg) + [last_index]
             # Remove duplicates
@@ -374,6 +376,7 @@ class SpeechSegmentor(nn.Module):
         if k is not None:
             # Get the scores of all the possible segments
             # local_scores[:, j, i] stores the score of segment that starts in j and ends in i
+            start_time = time.time()
             local_scores = Variable(torch.zeros(batch_size, max_length, max_length))
             if self.is_cuda:
                 local_scores = local_scores.cuda()
@@ -381,6 +384,7 @@ class SpeechSegmentor(nn.Module):
                 start_index = max(0, i-self.max_segment_size)
                 for j in range(start_index, i):
                     local_scores[:, j, i] = self.get_local_score(batch, j, i)
+            print(("get all segment scores: %s seconds ---" % (time.time() - start_time)))
 
             # Prepare labels
             if gold_seg is not None:
