@@ -312,7 +312,10 @@ def main(args):
     # Synthetic simple dataset for debugging
     elif args.dataset == 'toy':
         print('==> Using toy dataset')
-        dataset = toy_dataset(dataset_size=1000, seq_len=100)
+        dataset = toy_dataset(dataset_size=1000, 
+                              seq_len=100,
+                              k=2)
+        args.max_segment_size = dataset.max_seg_size
         args.val_path = None
 
     elif args.dataset == 'timit':
@@ -388,7 +391,7 @@ if __name__ == '__main__':
     parser.add_argument("--init_params", help="Start training from a set of pretrained parameters", default='')
     parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=False)
     parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
-    parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.001, type=float)
+    parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.0001, type=float)
     parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
     parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
     args = parser.parse_args()

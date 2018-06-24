@@ -412,18 +412,22 @@ def load_timit(dataset_path):
 
     return sorted_dataset
 
-def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
+def create_simple_dataset(dataset_size, seq_len, k, max_num_of_seg=10):
 
     dataset = []
+    max_seg_size = 0
     for _ in range(dataset_size):
 
         ex = torch.zeros(seq_len, 1)
 
         # Get random segmentation
-        seg_size = np.random.randint(1, max_seg_size)
-        seg_size = 5
-        seg = sorted(set(np.random.randint(1, seq_len-1, seg_size)))
-        if len(seg) != 5:
+        if k is None:
+            num_of_seg = np.random.randint(1, max_num_of_seg)    
+        else:
+            num_of_seg = k
+
+        seg = sorted(set(np.random.randint(1, seq_len-1, num_of_seg)))
+        if len(seg) != num_of_seg:
             continue
 
         full_seg = [0] + seg + [seq_len-1]
@@ -431,9 +435,14 @@ def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
             ex[full_seg[i]:full_seg[i+1]] = i
         ex[seq_len-1] = i
 
+        full_seg = np.array(full_seg)
+        current_max_seg_size = int(max(full_seg[1:] - full_seg[:-1]))
+        if current_max_seg_size > max_seg_size:
+            max_seg_size = current_max_seg_size
+
         dataset.append((ex, seg))
 
-    return dataset
+    return dataset, max_seg_size
 
 def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
     '''
@@ -461,10 +470,13 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             files.append(item)
             # get max_seg_size
             # current_max_seg_size = int(max(max(y_t[1, 1:] - y_t[1, :-1]), y_t[1, 0], len(x_t) - y_t[1, 1]))
+            # temp use only the event segment 
             current_max_seg_size = int(y_t[1, 1] - y_t[1, 0])
             if current_max_seg_size > max_seg_size:
                 max_seg_size = current_max_seg_size
 
+    # safty margin
+    max_seg_size += 2
     if not os.path.exists(CACHE):
         with open(CACHE, 'wb') as f:
             pickle.dump((dataset, files, max_seg_size), f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -535,8 +547,8 @@ class timit_dataset(Dataset):
         return self.data[item]
 
 class toy_dataset(Dataset):
-    def __init__(self, dataset_size, seq_len):
-        self.data = create_simple_dataset(dataset_size, seq_len)
+    def __init__(self, dataset_size, seq_len, k):
+        self.data, self.max_seg_size = create_simple_dataset(dataset_size, seq_len, k)
         self.input_size = self.data[0][0].size(1)
 
     def __len__(self):

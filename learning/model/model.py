@@ -500,7 +500,7 @@ class SpeechSegmentor(nn.Module):
         num_of_segments = k + 1
         M = np.zeros((batch_size))
         M.fill(-np.float("inf"))
-        min_segment_size = 20
+        min_segment_size = 1
         onsets = np.zeros((batch_size, num_of_segments-1))
 
         for i in range(0, n - 2 * min_segment_size):
@@ -513,6 +513,7 @@ class SpeechSegmentor(nn.Module):
 
                 valid_range = j < lengths.data.numpy() # check j is smaller than max len
                 idx = score.data.numpy() > M # find where current score improves the max
+                # Mask all the improve indexes that are not legal
                 idx = idx * valid_range # take indexes that improve the max and are valid
                 M[idx] = score.data.numpy()[idx] # update max
                 onsets[idx] = np.array([i, j]) # update onsets
