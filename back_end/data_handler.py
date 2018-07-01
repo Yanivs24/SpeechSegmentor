@@ -29,6 +29,9 @@ START_TIMES_EXTENSION  = 'start_times'
 
 PREASPIRATION_NUM_OF_FEATURES = 8
 
+WORD_MIN_WINDOW_SIZE = 50
+WORD_MAX_WINDOW_SIZE = 80
+
 
 def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_size, run_over=False, **kwargs):
     '''
@@ -465,15 +468,27 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             # read data
             x_t = np.loadtxt(os.path.join(dataset_path, item))
             # read labels
-            y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))
-            dataset.append((torch.FloatTensor(x_t), y_t[1]))
-            files.append(item)
-            # get max_seg_size
-            # current_max_seg_size = int(max(max(y_t[1, 1:] - y_t[1, :-1]), y_t[1, 0], len(x_t) - y_t[1, 1]))
-            # temp use only the event segment 
-            current_max_seg_size = int(y_t[1, 1] - y_t[1, 0])
+            y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))[1,:]
+            
+            # Crop utterance's both sides to get segments of reasonable sizes
+            win_onset, win_offset = np.random.randint(WORD_MIN_WINDOW_SIZE, 
+                                                      WORD_MAX_WINDOW_SIZE, 
+                                                      2)
+            start_index = max(int(y_t[0]) - win_onset, 0)
+            end_index   = min(int(y_t[-1]) + win_offset, len(x_t))
+            # Crop the input and fix the labels accordingly
+            x_t = x_t[start_index: end_index]
+            y_t -= start_index
+
+            # Get max segment size
+            current_max_seg_size = int(max(max(y_t[1:] - y_t[:-1]), y_t[0], len(x_t) - y_t[-1]))
+            
             if current_max_seg_size > max_seg_size:
                 max_seg_size = current_max_seg_size
+
+            # Add the example to the dataset
+            dataset.append((torch.FloatTensor(x_t), y_t))
+            files.append(item)
 
     # safty margin
     max_seg_size += 2

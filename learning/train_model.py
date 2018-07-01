@@ -282,7 +282,6 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
 def main(args):
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
-    dargs = vars(args)
 
     if args.is_cuda:
         print('==> Training on GPU using cuda')
@@ -325,7 +324,7 @@ def main(args):
             dev_data = timit_dataset(args.val_path)
 
     elif args.dataset == 'vot' or args.dataset == 'word':
-        print('==> Using VOT dataset')
+        print('==> Using %s dataset' % args.dataset)
         dataset = general_dataset(args.train_path, TXT_SUFFIX)
         args.max_segment_size = dataset.max_seg_size
         if args.val_path:
@@ -351,8 +350,6 @@ def main(args):
     else:
         train_data = dataset
 
-    print(args)
-    print(args.max_segment_size)
     # create a new model
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
                             load_from_file=args.init_params,

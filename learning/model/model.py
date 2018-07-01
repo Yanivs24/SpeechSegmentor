@@ -303,8 +303,9 @@ class SpeechSegmentor(nn.Module):
             full_seg = [0] + list(seg) + [last_index]
             # Remove duplicates
             full_seg = list(OrderedDict((x, True) for x in full_seg).keys())
-            #local_scores = [self.get_local_score(batch, full_seg[i], full_seg[i+1])[batch_ind] for i in range(len(full_seg)-1)]
-            local_scores = [self.get_local_score(batch, int(seg[0]), int(seg[1]))[batch_ind]]
+            local_scores = [self.get_local_score(batch, full_seg[i], full_seg[i+1])[batch_ind] for i in range(len(full_seg)-1)]
+            # Use only one segment - debug
+            #local_scores = [self.get_local_score(batch, int(seg[0]), int(seg[1]))[batch_ind]]
             scores[batch_ind] = sum(local_scores)
 
         return scores
@@ -413,7 +414,7 @@ class SpeechSegmentor(nn.Module):
 
         return pred_seg, final_scores
 
-    def exact_inference1(self, local_scores, lengths, k, gold_labels=None):
+    def exact_inference(self, local_scores, lengths, k, gold_labels=None):
         '''
         Apply dynamic programming algorithm for finding the best segmentation when
         k (the number of segments) is known.
@@ -493,7 +494,11 @@ class SpeechSegmentor(nn.Module):
         print("yhat:", onsets)
         return onsets
 
-    def exact_inference(self, local_scores, lengths, k, gold_labels=None):
+    def exact_inference_exhaustive(self, local_scores, lengths, k, gold_labels=None):
+        '''
+        Search best segmentation for the case of k=2 using exhaustive search.
+        For debugging purposes.
+        '''
         print("start exact_inference")
         batch_size = local_scores.size(0)
         n = local_scores.size(1)
