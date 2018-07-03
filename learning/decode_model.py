@@ -12,7 +12,7 @@ from train_model import convert_to_batches
 sys.path.append('./back_end')
 from data_handler import (preaspiration_dataset,
                           switchboard_dataset_after_embeddings, timit_dataset,
-                          toy_dataset)
+                          toy_dataset, general_dataset)
 
 def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
@@ -47,9 +47,11 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
     # Fixed k
     if use_k:
         if dataset_name == 'pa':
-            eval_performance_pa(labels, predictions)
+            eval_performance_general(labels, predictions)
         elif dataset_name == 'timit':
             eval_performance_timit(labels, predictions, use_k=True)
+	elif dataset_name == 'word' or dataset_name == 'vot':
+	    eval_performance_general(labels, predictions)
         else:
             print 'Performance evaluating with fixed K is not supported for %s' % dataset_name
     # k is not fixed
@@ -59,8 +61,8 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
         else:
             print 'Performance evaluating with unknown K is supported for %s' % dataset_name
 
-def eval_performance_pa(labels, predictions):
-    ''' Evaluate performence for the preaspiration task '''
+def eval_performance_general(labels, predictions):
+    ''' Evaluate performence for a general event of one segment (|y|=2) '''
 
     gold_durations = []
     pred_durations = []
@@ -84,10 +86,10 @@ def eval_performance_pa(labels, predictions):
     Y     = np.array(gold_durations)
     Y_tag = np.array(pred_durations)
 
-    print "Mean of labeled/predicted preaspiration: %sms, %sms" % (str(np.mean(Y)), str(np.mean(Y_tag)))
-    print "Standard deviation of labeled/predicted preaspiration: %sms, %sms" % (str(np.std(Y)), str(np.std(Y_tag)))
-    print "max of labeled/predicted preaspiration: %sms, %sms" % (str(np.max(Y)), str(np.max(Y_tag)))
-    print "min of labeled/predicted preaspiration: %sms, %sms" % (str(np.min(Y)), str(np.min(Y_tag)))
+    print "Mean of labeled/predicted event: %sms, %sms" % (str(np.mean(Y)), str(np.mean(Y_tag)))
+    print "Standard deviation of labeled/predicted event: %sms, %sms" % (str(np.std(Y)), str(np.std(Y_tag)))
+    print "max of labeled/predicted event: %sms, %sms" % (str(np.max(Y)), str(np.max(Y_tag)))
+    print "min of labeled/predicted event: %sms, %sms" % (str(np.min(Y)), str(np.min(Y_tag)))
 
     thresholds = [2, 5, 10, 15, 20, 25, 50]
     print "Percentage of examples with labeled/predicted difference of at most:"
@@ -195,6 +197,10 @@ if __name__ == '__main__':
     elif args.dataset == 'timit':
         print '==> Using timit dataset'
         dataset = timit_dataset(args.decode_path)
+    elif args.dataset == 'vot' or args.dataset == 'word':
+        print('==> Using %s dataset' % args.dataset)
+        dataset = general_dataset(args.decode_path, '.txt')
+        args.max_segment_size = dataset.max_seg_size
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 
