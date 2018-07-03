@@ -22,7 +22,7 @@ from data_handler import (preaspiration_dataset,
 from model.model import SpeechSegmentor
 
 
-DEV_SET_PROPORTION        = 0.3
+DEV_SET_PROPORTION        = 0.1
 TXT_SUFFIX = '.txt'
 DATA_SUFFIX = '.data'
 writer = SummaryWriter()
