@@ -425,7 +425,7 @@ def create_simple_dataset(dataset_size, seq_len, k, max_num_of_seg=10):
 
         # Get random segmentation
         if k is None:
-            num_of_seg = np.random.randint(1, max_num_of_seg)    
+            num_of_seg = np.random.randint(1, max_num_of_seg)
         else:
             num_of_seg = k
 
@@ -467,22 +467,24 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
         if item.endswith(suffix_x):
             # read data
             x_t = np.loadtxt(os.path.join(dataset_path, item))
+            np.nan_to_num(x_t, copy=False)  # replace NaNs to zeros
             # read labels
             y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))[1,:]
-            
+
             # Crop utterance's both sides to get segments of reasonable sizes
-            win_onset, win_offset = np.random.randint(WORD_MIN_WINDOW_SIZE, 
-                                                      WORD_MAX_WINDOW_SIZE, 
+            win_onset, win_offset = np.random.randint(WORD_MIN_WINDOW_SIZE,
+                                                      WORD_MAX_WINDOW_SIZE,
                                                       2)
             start_index = max(int(y_t[0]) - win_onset, 0)
             end_index   = min(int(y_t[-1]) + win_offset, len(x_t))
+
             # Crop the input and fix the labels accordingly
             x_t = x_t[start_index: end_index]
             y_t -= start_index
 
             # Get max segment size
-            current_max_seg_size = int(max(max(y_t[1:] - y_t[:-1]), y_t[0], len(x_t) - y_t[-1]))
-            
+            current_max_seg_size = int(max(y_t[0], y_t[1] - y_t[0], len(x_t) - y_t[1]))
+
             if current_max_seg_size > max_seg_size:
                 max_seg_size = current_max_seg_size
 

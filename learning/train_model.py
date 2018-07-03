@@ -90,7 +90,7 @@ def convert_to_batches(data, batch_size, is_cuda, fixed_k):
     return batches
 
 def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations,
-                is_cuda, patience, use_k, use_taskloss, params_file):
+                is_cuda, patience, use_k, use_taskloss, params_file, grad_clip):
     '''
     Train the network
     '''
@@ -160,6 +160,11 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             # Back propagation
             loss.backward()
+            #for p in model.parameters():
+            #    print(p.grad)
+            if grad_clip is not None:
+                print("==> clipping gradients:", grad_clip)
+                nn.utils.clip_grad_norm(model.parameters(), grad_clip)
             optimizer.step()
             print("Backwards: %s seconds ---" % (time.time() - start_time))
 
@@ -281,6 +286,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
 
 def main(args):
+    print("==> running {}".format(args))
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
 
     if args.is_cuda:
@@ -311,7 +317,7 @@ def main(args):
     # Synthetic simple dataset for debugging
     elif args.dataset == 'toy':
         print('==> Using toy dataset')
-        dataset = toy_dataset(dataset_size=1000, 
+        dataset = toy_dataset(dataset_size=1000,
                               seq_len=100,
                               k=2)
         args.max_segment_size = dataset.max_seg_size
@@ -370,7 +376,8 @@ def main(args):
                        patience=args.patience,
                        use_k=args.use_k,
                        use_taskloss=args.use_task_loss,
-                       params_file=args.params_path)
+                       params_file=args.params_path,
+                       grad_clip=args.grad_clip)
 
 
 if __name__ == '__main__':
@@ -389,6 +396,7 @@ if __name__ == '__main__':
     parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=False)
     parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
     parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.0001, type=float)
+    parser.add_argument('--grad_clip', help='gradient clipping', default=None, type=float)
     parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
     parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
     args = parser.parse_args()

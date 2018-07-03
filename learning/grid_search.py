@@ -18,9 +18,11 @@ parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', act
 parser.add_argument("--init_params", help="Start training from a set of pretrained parameters", default='')
 parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=False)
 parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
-parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.001, type=float)
+parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.0001, type=float)
+parser.add_argument('--grad_clip', help='gradient clipping', default=None, type=float)
 parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
 parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
+
 args = parser.parse_args()
 dargs = vars(args)
 
@@ -34,9 +36,9 @@ if not os.path.exists(experiment_folder):
     os.mkdir(experiment_folder)
 
 # create grid
-grids = {'learning_rate': [0.00005],
+grids = {'learning_rate': [0.0001],
          'use_k': [True],
-         'task_loss_coef': [0.001]}
+         'task_loss_coef': [0.0001]}
 cartesian_product = (dict(zip(grids, x)) for x in itertools.product(*grids.values()))
 
 # search the grid
@@ -45,7 +47,6 @@ for sub_exp_idx, combination in enumerate(cartesian_product):
     for k, v in combination.items():
         dargs[k] = v
     dargs['params_path'] = sub_exp_name + ".model"
-    # print("==> running {}".format(args))
     metrics_df = main(args)
     metrics_df.to_csv(sub_exp_name + ".csv", sep='\t')
     with open(sub_exp_name + ".txt", 'w') as f:

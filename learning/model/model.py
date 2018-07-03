@@ -510,8 +510,8 @@ class SpeechSegmentor(nn.Module):
 
         for i in range(0, n - 2 * min_segment_size):
             for j in range(i + min_segment_size, min(i + self.max_segment_size, n - min_segment_size)):
-                # score = local_scores[:, 0, i] + local_scores[:, i, j] + local_scores[:, j, n-1]
-                score = local_scores[:, i, j]
+                score = local_scores[:, 0, i] + local_scores[:, i, j] + local_scores[:, j, n-1]
+                #score = local_scores[:, i, j]
                 if gold_labels is not None:
                     score.data += self.task_loss_coef * self.local_task_loss(i, gold_labels[:, 0])
                     score.data += self.task_loss_coef * self.local_task_loss(j, gold_labels[:, 1])
