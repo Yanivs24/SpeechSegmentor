@@ -28,7 +28,7 @@ dargs = vars(args)
 
 # create folder for the new experiment
 experiments_folder = 'experiments'
-experiment_name = "{}_{}".format(time.strftime("%H_%M"), time.strftime("%d_%m_%Y"))
+experiment_name = "{}_{}_{}".format(args.dataset, time.strftime("%H_%M_%S"), time.strftime("%d_%m_%Y"))
 experiment_folder = os.path.join(experiments_folder, experiment_name)
 if not os.path.exists(experiments_folder):
     os.mkdir(experiments_folder)
