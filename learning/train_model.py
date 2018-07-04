@@ -22,7 +22,7 @@ from data_handler import (preaspiration_dataset,
 from model.model import SpeechSegmentor
 
 
-DEV_SET_PROPORTION        = 0.3
+DEV_SET_PROPORTION        = 0.1
 TXT_SUFFIX = '.txt'
 DATA_SUFFIX = '.data'
 writer = SummaryWriter()
@@ -151,6 +151,10 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             loss = torch.mean(batch_loss)
             print("The avg loss is %s" % str(loss))
+
+            if float(loss) < 0:
+                raise Exception()
+
             train_closs += float(loss.data[0])
 
             writer.add_scalars('metrics',
@@ -160,8 +164,6 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             # Back propagation
             loss.backward()
-            #for p in model.parameters():
-            #    print(p.grad)
             if grad_clip is not None:
                 print("==> clipping gradients:", grad_clip)
                 nn.utils.clip_grad_norm(model.parameters(), grad_clip)

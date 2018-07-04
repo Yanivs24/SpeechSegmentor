@@ -8,3 +8,4 @@ data/*
 runs/
 ckpt/
 experiments/
+experiemnts_stash/

@@ -17,7 +17,7 @@ parser.add_argument('--patience', help='Num of consecutive epochs to trigger ear
 parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
 parser.add_argument("--init_params", help="Start training from a set of pretrained parameters", default='')
 parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=True)
-parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
+parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=True)
 parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.0001, type=float)
 parser.add_argument('--grad_clip', help='gradient clipping', default=5, type=float)
 parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
@@ -28,7 +28,7 @@ dargs = vars(args)
 
 # create folder for the new experiment
 experiments_folder = 'experiments'
-experiment_name = "{}_{}".format(time.strftime("%H_%M"), time.strftime("%d_%m_%Y"))
+experiment_name = "{}_{}_{}".format(args.dataset, time.strftime("%H_%M_%S"), time.strftime("%d_%m_%Y"))
 experiment_folder = os.path.join(experiments_folder, experiment_name)
 if not os.path.exists(experiments_folder):
     os.mkdir(experiments_folder)

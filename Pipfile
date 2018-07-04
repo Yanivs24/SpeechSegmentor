@@ -12,6 +12,7 @@ tensorboardx = "*"
 "h5py" = "*"
 librosa = "*"
 soundfile = "*"
+pipfile = "*"
 
 [dev-packages]
 

@@ -471,6 +471,10 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             # read labels
             y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))[1,:]
 
+            # check if last segment is empty - skip the file
+            if y_t[-1] == len(x_t):
+                continue
+
             # Crop utterance's both sides to get segments of reasonable sizes
             win_onset, win_offset = np.random.randint(WORD_MIN_WINDOW_SIZE,
                                                       WORD_MAX_WINDOW_SIZE,
