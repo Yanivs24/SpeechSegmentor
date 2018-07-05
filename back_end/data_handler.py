@@ -469,7 +469,15 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
             x_t = np.loadtxt(os.path.join(dataset_path, item))
             np.nan_to_num(x_t, copy=False)  # replace NaNs to zeros
             # read labels
-            y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))[1,:]
+            with open(os.path.join(dataset_path, item.replace(suffix_x, suffix_y))) as f:
+                tmp = f.readlines()[1].split()
+                y_t = []
+                y_t.append(float(tmp[0]))
+                for i in range(1, len(tmp)):
+                    if float(tmp[i]) != y_t[len(y_t)-1]:
+                        y_t.append(float(tmp[i]))
+                y_t = np.asarray(y_t)
+            # y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))[1,:]
 
             # check if last segment is empty - skip the file
             if y_t[-1] == len(x_t):
