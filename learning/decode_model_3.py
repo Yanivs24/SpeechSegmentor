@@ -201,6 +201,10 @@ if __name__ == '__main__':
         print(('==> Using %s dataset' % args.dataset))
         dataset = general_dataset(args.decode_path, '.txt')
         args.max_segment_size = dataset.max_seg_size
+    elif args.dataset == 'vowel':
+        print('==> Using Vowel dataset')
+        dataset = general_dataset(args.decode_path, '.data')
+        args.max_segment_size = dataset.max_seg_size
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 
