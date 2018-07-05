@@ -19,7 +19,7 @@ parser.add_argument("--init_params", help="Start training from a set of pretrain
 parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=True)
 parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=True)
 parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.0001, type=float)
-parser.add_argument('--grad_clip', help='gradient clipping', default=None, type=float)
+parser.add_argument('--grad_clip', help='gradient clipping', default=5, type=float)
 parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
 parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
 

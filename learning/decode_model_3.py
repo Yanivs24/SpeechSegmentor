@@ -95,7 +95,7 @@ def eval_performance_general(labels, predictions):
     print("Percentage of examples with labeled/predicted difference of at most:")
     print("------------------------------")
     for thresh in thresholds:
-        print("%d msec: " % thresh, 100*(len(Y[abs(Y-Y_tag)<thresh])/float(len(Y))))
+        print("%d msec: " % thresh, 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y))))
 
 def eval_performance_timit(labels, predictions, use_k):
     ''' Evaluate performence for the timit task '''
