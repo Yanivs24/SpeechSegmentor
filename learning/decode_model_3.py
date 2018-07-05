@@ -8,7 +8,7 @@ import torch
 
 from model.model import SpeechSegmentor
 from train_model import convert_to_batches
-
+from tqdm import tqdm
 sys.path.append('./back_end')
 from data_handler import (preaspiration_dataset,
                           switchboard_dataset_after_embeddings, timit_dataset,
@@ -21,7 +21,7 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
     # Convert data to torch batches and loop over them
     batches = convert_to_batches(dataset, batch_size, is_cuda, use_k)
-    for batch, lengths, segmentations in batches:
+    for batch, lengths, segmentations in tqdm(batches):
 
         # k Value to be sent to the model
         real_k = len(segmentations[0]) if use_k else None
@@ -50,7 +50,7 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
             eval_performance_general(labels, predictions)
         elif dataset_name == 'timit':
             eval_performance_timit(labels, predictions, use_k=True)
-        elif dataset_name == 'word' or dataset_name == 'vot':
+        elif dataset_name == 'word' or dataset_name == 'vot' or dataset_name == 'vowel':
             eval_performance_general(labels, predictions)
         else:
             print('Performance evaluating with fixed K is not supported for %s' % dataset_name)
