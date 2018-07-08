@@ -97,7 +97,7 @@ def eval_performance_general(labels, predictions):
     for thresh in thresholds:
         print("%d msec: " % thresh, 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y))))
 
-def eval_performance_timit(labels, predictions, use_k):
+def eval_performance_timit(labels, predictions, use_k, conservative_matching=False):
     ''' Evaluate performence for the timit task '''
 
     # Here each index is 10ms wide
@@ -113,24 +113,25 @@ def eval_performance_timit(labels, predictions, use_k):
 
         pred, gold = np.array(pred), np.array(gold)
 
-        # More conservative matching algorithm (each boundary is used once)
-        # for i,y_hat in enumerate(pred):
-        #     # Find all golds within a 20ms window of the found boundary
-        #     golds_in_win = gold[np.abs(gold-y_hat)<=2]
-        #     # Miss - go to the next boundary
-        #     if len(golds_in_win) == 0:
-        #         continue
+        # More conservative matching algorithm (each gold boundary is used once)
+        if conservative_matching:
+            for i,y_hat in enumerate(pred):
+                # Find all golds within a 20ms window of the found boundary
+                golds_in_win = gold[np.abs(gold-y_hat)<=2]
+                # Miss - go to the next boundary
+                if len(golds_in_win) == 0:
+                    continue
 
-        #     # Hit
-        #     precisions[2] += 1
-        #     recalls[2] +=1
+                # Hit
+                precisions[2] += 1
+                recalls[2] +=1
 
-        #     # Find the closest hit
-        #     closest = golds_in_win[np.abs(golds_in_win-y_hat).argmin()]
+                # Find the closest hit
+                closest = golds_in_win[np.abs(golds_in_win-y_hat).argmin()]
 
-        #     # Remove our match from the golds, because we don't want to
-        #     # use it again
-        #     gold[gold==closest] = -100
+                # Remove our match from the golds, because we don't want to
+                # use it again
+                gold[gold==closest] = -100
 
         # Count for precision
         for y_hat in pred:
@@ -202,7 +203,7 @@ if __name__ == '__main__':
         print('==> Using timit dataset')
         dataset = timit_dataset(args.decode_path)
     elif args.dataset == 'vot' or args.dataset == 'word':
-        print(('==> Using %s dataset' % args.dataset))
+        print('==> Using %s dataset' % args.dataset)
         dataset = general_dataset(args.decode_path, '.txt')
         args.max_segment_size = dataset.max_seg_size
     elif args.dataset == 'vowel':
