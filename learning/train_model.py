@@ -90,7 +90,7 @@ def convert_to_batches(data, batch_size, is_cuda, fixed_k):
     return batches
 
 def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations,
-                is_cuda, patience, use_k, use_taskloss, params_file, grad_clip):
+                is_cuda, patience, use_k, use_taskloss, params_file, grad_clip, optimizer):
     '''
     Train the network
     '''
@@ -99,16 +99,21 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     train_batches = convert_to_batches(train_data, batch_size, is_cuda, use_k)
     dev_batches   = convert_to_batches(dev_data, batch_size, is_cuda, use_k)
 
-    # Use SGD optimizer
-    #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-    # Use Adam optimizer
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
+    if optimizer == 'sgd':
+        print("==> using sgd")
+        # Use SGD optimizer
+        optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.5)
+    else:
+        print("==> using adam")
+        # Use Adam optimizer
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
 
     epoch_metrics = pd.DataFrame(columns=['train_epoch_loss', 'dev_epoch_loss',
                                           'dev_precision', 'dev_recall',
                                           'dev_f1'])
     best_dev_loss = float("inf")
+    best_dev_f1 = 0
     consecutive_no_improve = 0
     print('Start training the model..')
     for ITER in range(iterations):
@@ -278,6 +283,12 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         else:
             consecutive_no_improve += 1
 
+        # also save best model according to f1
+        params_file_f1 = params_file.replace('.model', '_f1.model')
+        if dev_f1 > best_dev_f1:
+            best_dev_f1 = dev_f1
+            print('Best F1 so far - storing parameters in %s' % params_file_f1)
+
         # After #patience consecutive epochs without loss improvements - stop training
         if consecutive_no_improve == patience:
             print('No loss improvements - stop training!')
@@ -360,6 +371,9 @@ def main(args):
 
     # create a new model
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
+                            rnn_output_dim=args.rnn_output_dim,
+                            sum_mlp_hid_dims=(args.sum_mlp_hid_dim, args.sum_mlp_hid_dim),
+                            output_mlp_hid_dim=args.output_mlp_hid_dim,
                             load_from_file=args.init_params,
                             is_cuda=args.is_cuda,
                             use_task_loss=args.use_task_loss,
@@ -379,7 +393,8 @@ def main(args):
                        use_k=args.use_k,
                        use_taskloss=args.use_task_loss,
                        params_file=args.params_path,
-                       grad_clip=args.grad_clip)
+                       grad_clip=args.grad_clip,
+                       optimizer=args.optimizer)
 
 
 if __name__ == '__main__':
@@ -399,6 +414,10 @@ if __name__ == '__main__':
     parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
     parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.0001, type=float)
     parser.add_argument('--grad_clip', help='gradient clipping', default=None, type=float)
+    parser.add_argument('--optimizer', help='optimizer', default="adam")
+    parser.add_argument('--rnn_output_dim', default=80, type=int)
+    parser.add_argument('--sum_mlp_hid_dim', default=100, type=int)
+    parser.add_argument('--output_mlp_hid_dim', default=100, type=int)
     parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
     parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
     args = parser.parse_args()

@@ -173,6 +173,10 @@ if __name__ == '__main__':
     parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     parser.add_argument('--use_k', help='Apply inference when k (# of segments) is known for each example', action='store_true', default=False)
     parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
+    parser.add_argument('--rnn_output_dim', default=80, type=int)
+    parser.add_argument('--sum_mlp_hid_dim', default=100, type=int)
+    parser.add_argument('--output_mlp_hid_dim', default=100, type=int)
+
     args = parser.parse_args()
 
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
@@ -210,6 +214,9 @@ if __name__ == '__main__':
 
     # Construct a model with the pre-trained parameters
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
+                            rnn_output_dim=args.rnn_output_dim,
+                            sum_mlp_hid_dims=(args.sum_mlp_hid_dim, args.sum_mlp_hid_dim),
+                            output_mlp_hid_dim=args.output_mlp_hid_dim,
                             load_from_file=args.params_path,
                             is_cuda=args.is_cuda,
                             max_segment_size=args.max_segment_size)

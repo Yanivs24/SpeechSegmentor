@@ -7,5 +7,5 @@ data/*
 .ftpconfig
 runs/
 ckpt/
-experiments/
-experiemnts_stash/
+experiments/*
+experiemtns_stash/*

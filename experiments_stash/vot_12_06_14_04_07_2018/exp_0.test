@@ -1,0 +1,15 @@
+left_err:  3.0440251572327046
+right_err:  4.320754716981132
+Mean of labeled/predicted event: 62.0251572327044ms, 60.9622641509434ms
+Standard deviation of labeled/predicted event: 28.719846026622218ms, 26.740280498957535ms
+max of labeled/predicted event: 201.0ms, 201.0ms
+min of labeled/predicted event: 9.0ms, 15.0ms
+Percentage of examples with labeled/predicted difference of at most:
+------------------------------
+2 msec:  48.42767295597484
+5 msec:  76.72955974842768
+10 msec:  88.67924528301887
+15 msec:  91.82389937106919
+20 msec:  94.9685534591195
+25 msec:  96.22641509433963
+50 msec:  99.37106918238993
