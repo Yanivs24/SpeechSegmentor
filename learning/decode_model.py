@@ -113,16 +113,17 @@ def plot_unary_scores(model, batches, position=0, num_of_frames=150):
     for xc in xposition:
         plt.axvline(x=xc, color='r', linestyle='dotted')
 
+    plt.xlabel('Frame number (i)', fontsize=14)
     if position == 0:
-        plt.title('$y_i$ scores')
+        plt.ylabel('$s_l(i)$', fontsize=14)
     else:
-        plt.title('$y_{i+1}$ scores')
-    plt.xlabel('Frame number', fontsize=14)
-    plt.ylabel('Score', fontsize=14)
-
+        plt.ylabel('$s_r(i)$', fontsize=14)
+    
     # Turn off y labels
     #plt.yticks([])
 
+    fname = "{}.pdf".format("s_l_scores" if position==0 else "s_r_scores")
+    plt.savefig(fname, bbox_inches='tight')
     plt.show()
 
 def plot_binary_scores(model, batches, num_of_frames=150):
@@ -146,10 +147,11 @@ def plot_binary_scores(model, batches, num_of_frames=150):
     plt.plot(seg[:-1], seg[1:], 'ro',  markersize=5)
 
     # Info
-    plt.title('Pairwise Scores')
+    plt.title('$s_{lr}(y_i,y_{i+1})$')
     plt.xlabel('$y_i$', fontsize=14)
     plt.ylabel('$y_{i+1}$', fontsize=14)
 
+    plt.savefig('slr_scores_limited.pdf', bbox_inches='tight')
     plt.show()
 
 def plot_sums_tsne(model, batches):
@@ -182,7 +184,7 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
     # Experiments
     #####################################################
-    plot_sums_tsne(model, batches)
+    #plot_sums_tsne(model, batches)
     plot_binary_scores(model, batches)
     plot_unary_scores(model, batches, position=0)
     plot_unary_scores(model, batches, position=1)

@@ -244,22 +244,30 @@ class SpeechSegmentor(nn.Module):
 
     def get_binary_scores(self, batch):
 
+        batch_size = batch.size(0)
         seq_len    = batch.size(1)
         birnn_len = 200
 
         # Get all the (i,j) scores
         scores = np.zeros((seq_len, seq_len))
         for i in range(seq_len-1):
-            for j in range(i, seq_len):
+            end_index = min(i+52, seq_len)
+            for j in range(i+1, end_index):
                 # Get RNN
                 if i == 0:
                     birnn_sum = self.BiRNN_sums[:, j, :]
                 else:
                     birnn_sum = self.BiRNN_sums[:, j, :] - self.BiRNN_sums[:, i-1, :]
                 
+                # Concatenate the whole BiRNNs 
+                # features = torch.cat((self.BiRNN_vals[:, i, :],
+                #                       self.BiRNN_vals[:, j, :],
+                #                       self.mlp_sum_layer(birnn_sum)),
+                #                       dim=1)
+
                 # Concatenate the BiRNNs with zeros in all the other places
-                features = torch.cat((self.BiRNN_vals[:, i, :],
-                                      self.BiRNN_vals[:, j, :],
+                features = torch.cat((Variable(torch.zeros(batch_size, birnn_len)),
+                                      Variable(torch.zeros(batch_size, birnn_len)),
                                       self.mlp_sum_layer(birnn_sum)),
                                       dim=1)
                 
