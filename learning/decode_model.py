@@ -107,7 +107,7 @@ def plot_unary_scores(model, batches, position=0, num_of_frames=150):
     xposition = [t for t in segmentations[0] if t < num_of_frames]
 
     # Add scores to plot
-    plt.plot(scores, label='scores', linewidth=2.5)
+    plt.plot(scores, label='scores', linewidth=1.0)
 
     # Add gold boundaries
     for xc in xposition:
@@ -120,7 +120,7 @@ def plot_unary_scores(model, batches, position=0, num_of_frames=150):
         plt.ylabel('$s_r(i)$', fontsize=14)
     
     # Turn off y labels
-    #plt.yticks([])
+    plt.yticks([])
 
     fname = "{}.pdf".format("s_l_scores" if position==0 else "s_r_scores")
     plt.savefig(fname, bbox_inches='tight')
@@ -185,7 +185,7 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
     # Experiments
     #####################################################
     #plot_sums_tsne(model, batches)
-    plot_binary_scores(model, batches)
+    #plot_binary_scores(model, batches)
     plot_unary_scores(model, batches, position=0)
     plot_unary_scores(model, batches, position=1)
     exit()
