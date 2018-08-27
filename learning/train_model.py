@@ -5,7 +5,8 @@ import argparse
 import random
 import sys
 import time
-
+from tqdm import tqdm
+import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
@@ -21,7 +22,7 @@ from data_handler import (preaspiration_dataset,
 from model.model import SpeechSegmentor
 
 
-DEV_SET_PROPORTION        = 0.3
+DEV_SET_PROPORTION        = 0.1
 TXT_SUFFIX = '.txt'
 DATA_SUFFIX = '.data'
 writer = SummaryWriter()
@@ -89,7 +90,7 @@ def convert_to_batches(data, batch_size, is_cuda, fixed_k):
     return batches
 
 def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations,
-                is_cuda, patience, use_k, use_taskloss, params_file):
+                is_cuda, patience, use_k, use_taskloss, params_file, grad_clip, optimizer):
     '''
     Train the network
     '''
@@ -98,15 +99,24 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     train_batches = convert_to_batches(train_data, batch_size, is_cuda, use_k)
     dev_batches   = convert_to_batches(dev_data, batch_size, is_cuda, use_k)
 
-    # Use SGD optimizer
-    #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-    # Use Adam optimizer
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
+    if optimizer == 'sgd':
+        print("==> using sgd")
+        # Use SGD optimizer
+        optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.5)
+    else:
+        print("==> using adam")
+        # Use Adam optimizer
+        optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=0.0)
 
+
+    epoch_metrics = pd.DataFrame(columns=['train_epoch_loss', 'dev_epoch_loss',
+                                          'dev_precision', 'dev_recall',
+                                          'dev_f1'])
     best_dev_loss = float("inf")
+    best_dev_f1 = 0
     consecutive_no_improve = 0
     print('Start training the model..')
-    for ITER in xrange(iterations):
+    for ITER in range(iterations):
         print('-------- Epoch #%d --------' % (ITER+1))
 
         random.shuffle(train_batches)
@@ -115,7 +125,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         # Run train epochs
         train_closs = 0.0
         n_batches = len(train_batches)
-        for batch_idx, (batch, lengths, segmentations) in enumerate(train_batches):
+        for batch_idx, (batch, lengths, segmentations) in enumerate(tqdm(train_batches)):
 
             # Clear gradients (Pytorch accumulates gradients)
             model.zero_grad()
@@ -146,6 +156,10 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             loss = torch.mean(batch_loss)
             print("The avg loss is %s" % str(loss))
+
+            if float(loss) < 0:
+                raise Exception()
+
             train_closs += float(loss.data[0])
 
             writer.add_scalars('metrics',
@@ -155,6 +169,9 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             # Back propagation
             loss.backward()
+            if grad_clip is not None:
+                print("==> clipping gradients:", grad_clip)
+                nn.utils.clip_grad_norm(model.parameters(), grad_clip)
             optimizer.step()
             print("Backwards: %s seconds ---" % (time.time() - start_time))
 
@@ -228,9 +245,10 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             avg_dev_taskloss = dev_ctaskloss / len(dev_batches)
 
         # Evaluate performence
-        dev_precision = float(dev_precision_counter) / dev_pred_counter
-        dev_recall    = float(dev_recall_counter) / dev_gold_counter
-        dev_f1        = (2 * (dev_precision*dev_recall) / (dev_precision+dev_recall))
+        EPS = 1e-5
+        dev_precision = float(dev_precision_counter) / (dev_pred_counter+EPS)
+        dev_recall    = float(dev_recall_counter) / (dev_gold_counter+EPS)
+        dev_f1        = (2 * (dev_precision*dev_recall) / (dev_precision+dev_recall+EPS))
 
         print("#####################################################################")
         print("Results for Epoch #%d" % (ITER+1))
@@ -242,6 +260,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         print("Dev F1 score: %f" % dev_f1)
         print("#####################################################################")
 
+        # log tensorboard metrics
         writer.add_scalars('metrics',
                            {
                              "train_epoch_loss": avg_train_loss,
@@ -250,6 +269,9 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                              "dev_recall": dev_recall,
                              "dev_f1": dev_f1
                            }, ITER + 1)
+        # log metrics to dataframe for later evaluation
+        epoch_metrics.loc[ITER] = (avg_train_loss, avg_dev_loss, dev_precision,
+                                   dev_recall, dev_f1)
 
         # Check if it's the best loss so far on the validation set
         if avg_dev_loss < best_dev_loss:
@@ -261,36 +283,23 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
         else:
             consecutive_no_improve += 1
 
+        # also save best model according to f1
+        params_file_f1 = params_file.replace('.model', '_f1.model')
+        if dev_f1 > best_dev_f1:
+            best_dev_f1 = dev_f1
+            print('Best F1 so far - storing parameters in %s' % params_file_f1)
+
         # After #patience consecutive epochs without loss improvements - stop training
         if consecutive_no_improve == patience:
             print('No loss improvements - stop training!')
-            return
+            return epoch_metrics
 
     print('Tranining process has finished!')
+    return epoch_metrics
 
 
-if __name__ == '__main__':
-
-      # -------------MENU-------------- #
-    # command line arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument("train_path", help="A path to the training set")
-    parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
-    parser.add_argument("--val_path", help="A path to the training set", default=None)
-    parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit/vot/word/vowel", default='sb')
-    parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
-    parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
-    parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
-    parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=5, type=int)
-    parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
-    parser.add_argument("--init_params", help="Start training from a set of pretrained parameters", default='')
-    parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=False)
-    parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
-    parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.001, type=float)
-    parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
-    parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and use them as a fixed embedding layer', default='')
-    args = parser.parse_args()
-
+def main(args):
+    print("==> running {}".format(args))
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
 
     if args.is_cuda:
@@ -321,7 +330,10 @@ if __name__ == '__main__':
     # Synthetic simple dataset for debugging
     elif args.dataset == 'toy':
         print('==> Using toy dataset')
-        dataset = toy_dataset(dataset_size=1000, seq_len=100)
+        dataset = toy_dataset(dataset_size=1000,
+                              seq_len=100,
+                              k=2)
+        args.max_segment_size = dataset.max_seg_size
         args.val_path = None
 
     elif args.dataset == 'timit':
@@ -331,14 +343,16 @@ if __name__ == '__main__':
             dev_data = timit_dataset(args.val_path)
 
     elif args.dataset == 'vot' or args.dataset == 'word':
-        print('==> Using VOT dataset')
+        print('==> Using %s dataset' % args.dataset)
         dataset = general_dataset(args.train_path, TXT_SUFFIX)
+        args.max_segment_size = dataset.max_seg_size
         if args.val_path:
             dev_data = general_dataset(args.val_path, TXT_SUFFIX)
 
     elif args.dataset == 'vowel':
         print('==> Using Vowel dataset')
         dataset = general_dataset(args.train_path, DATA_SUFFIX)
+        args.max_segment_size = dataset.max_seg_size
         if args.val_path:
             dev_data = general_dataset(args.val_path, DATA_SUFFIX)
 
@@ -357,6 +371,9 @@ if __name__ == '__main__':
 
     # create a new model
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
+                            rnn_output_dim=args.rnn_output_dim,
+                            sum_mlp_hid_dims=(args.sum_mlp_hid_dim, args.sum_mlp_hid_dim),
+                            output_mlp_hid_dim=args.output_mlp_hid_dim,
                             load_from_file=args.init_params,
                             is_cuda=args.is_cuda,
                             use_task_loss=args.use_task_loss,
@@ -365,14 +382,43 @@ if __name__ == '__main__':
                             load_lstm_from_file=args.init_lstm_params)
 
     # train the model
-    train_model(model=model,
-                train_data=train_data,
-                dev_data=dev_data,
-                learning_rate=args.learning_rate,
-                batch_size=args.batch_size,
-                iterations=args.num_iters,
-                is_cuda=args.is_cuda,
-                patience=args.patience,
-                use_k=args.use_k,
-                use_taskloss=args.use_task_loss,
-                params_file=args.params_path)
+    return train_model(model=model,
+                       train_data=train_data,
+                       dev_data=dev_data,
+                       learning_rate=args.learning_rate,
+                       batch_size=args.batch_size,
+                       iterations=args.num_iters,
+                       is_cuda=args.is_cuda,
+                       patience=args.patience,
+                       use_k=args.use_k,
+                       use_taskloss=args.use_task_loss,
+                       params_file=args.params_path,
+                       grad_clip=args.grad_clip,
+                       optimizer=args.optimizer)
+
+
+if __name__ == '__main__':
+    # command line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("train_path", help="A path to the training set")
+    parser.add_argument("params_path", help="A path to a file in which the trained model parameters will be stored")
+    parser.add_argument("--val_path", help="A path to the training set", default=None)
+    parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit/vot/word/vowel", default='sb')
+    parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
+    parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
+    parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
+    parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=5, type=int)
+    parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
+    parser.add_argument("--init_params", help="Start training from a set of pretrained parameters", default='')
+    parser.add_argument('--use_task_loss', help='Train with strucutal loss using task loss (always on when k is known)', action='store_true', default=False)
+    parser.add_argument('--use_k', help='Apply inference when k (num of segments) is known for each example', action='store_true', default=False)
+    parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.0001, type=float)
+    parser.add_argument('--grad_clip', help='gradient clipping', default=None, type=float)
+    parser.add_argument('--optimizer', help='optimizer', default="adam")
+    parser.add_argument('--rnn_output_dim', default=80, type=int)
+    parser.add_argument('--sum_mlp_hid_dim', default=100, type=int)
+    parser.add_argument('--output_mlp_hid_dim', default=100, type=int)
+    parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
+    parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
+    args = parser.parse_args()
+    main(args)

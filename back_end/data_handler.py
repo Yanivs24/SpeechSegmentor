@@ -1,8 +1,8 @@
 import pickle as pickle
 import os
-import random
 from collections import OrderedDict
 from shutil import copyfile
+from tqdm import tqdm
 
 import h5py
 import librosa
@@ -28,6 +28,9 @@ DIST_EXTENSION  = 'dist'
 START_TIMES_EXTENSION  = 'start_times'
 
 PREASPIRATION_NUM_OF_FEATURES = 8
+
+WORD_MIN_WINDOW_SIZE = 50
+WORD_MAX_WINDOW_SIZE = 80
 
 
 def load_switchboard(preprocessed_data_path, features_type, sample_rate, win_size, run_over=False, **kwargs):
@@ -412,18 +415,22 @@ def load_timit(dataset_path):
 
     return sorted_dataset
 
-def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
+def create_simple_dataset(dataset_size, seq_len, k, max_num_of_seg=10):
 
     dataset = []
+    max_seg_size = 0
     for _ in range(dataset_size):
 
         ex = torch.zeros(seq_len, 1)
 
         # Get random segmentation
-        seg_size = np.random.randint(1, max_seg_size)
-        seg_size = 5
-        seg = sorted(set(np.random.randint(1, seq_len-1, seg_size)))
-        if len(seg) != 5:
+        if k is None:
+            num_of_seg = np.random.randint(1, max_num_of_seg)
+        else:
+            num_of_seg = k
+
+        seg = sorted(set(np.random.randint(1, seq_len-1, num_of_seg)))
+        if len(seg) != num_of_seg:
             continue
 
         full_seg = [0] + seg + [seq_len-1]
@@ -431,9 +438,14 @@ def create_simple_dataset(dataset_size, seq_len, max_seg_size=10):
             ex[full_seg[i]:full_seg[i+1]] = i
         ex[seq_len-1] = i
 
+        full_seg = np.array(full_seg)
+        current_max_seg_size = int(max(full_seg[1:] - full_seg[:-1]))
+        if current_max_seg_size > max_seg_size:
+            max_seg_size = current_max_seg_size
+
         dataset.append((ex, seg))
 
-    return dataset
+    return dataset, max_seg_size
 
 def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
     '''
@@ -444,28 +456,64 @@ def load_txtdata(dataset_path, suffix_x, suffix_y='.labels'):
     if os.path.exists(CACHE):
         print("==> Loading cached version...")
         with open(CACHE, 'rb') as f:
-            dataset, files = pickle.load(f)
-            return dataset, files
+            dataset, files, max_seg_size = pickle.load(f)
+            print("==> detected max_seg_size {}".format(max_seg_size))
+            return dataset, files, max_seg_size
 
-    from tqdm import tqdm
     files = []
     dataset = []
+    max_seg_size = 0
     for item in tqdm(os.listdir(dataset_path)):
         if item.endswith(suffix_x):
             # read data
             x_t = np.loadtxt(os.path.join(dataset_path, item))
+            np.nan_to_num(x_t, copy=False)  # replace NaNs to zeros
             # read labels
-            y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))
-            dataset.append((torch.FloatTensor(x_t), y_t[1]))
+            with open(os.path.join(dataset_path, item.replace(suffix_x, suffix_y))) as f:
+                tmp = f.readlines()[1].split()
+                y_t = []
+                y_t.append(float(tmp[0]))
+                for i in range(1, len(tmp)):
+                    if float(tmp[i]) != y_t[len(y_t)-1]:
+                        y_t.append(float(tmp[i]))
+                y_t = np.asarray(y_t)
+            # y_t = np.loadtxt(os.path.join(dataset_path, item.replace(suffix_x, suffix_y)))[1,:]
+
+            # check if last segment is empty - skip the file
+            if y_t[-1] == len(x_t):
+                continue
+
+            # Crop utterance's both sides to get segments of reasonable sizes
+            win_onset, win_offset = np.random.randint(WORD_MIN_WINDOW_SIZE,
+                                                      WORD_MAX_WINDOW_SIZE,
+                                                      2)
+            start_index = max(int(y_t[0]) - win_onset, 0)
+            end_index   = min(int(y_t[-1]) + win_offset, len(x_t))
+
+            # Crop the input and fix the labels accordingly
+            x_t = x_t[start_index: end_index]
+            y_t -= start_index
+
+            # Get max segment size
+            current_max_seg_size = int(max(y_t[0], y_t[1] - y_t[0], len(x_t) - y_t[1]))
+
+            if current_max_seg_size > max_seg_size:
+                max_seg_size = current_max_seg_size
+
+            # Add the example to the dataset
+            dataset.append((torch.FloatTensor(x_t), y_t))
             files.append(item)
 
+    # safty margin
+    max_seg_size += 2
     if not os.path.exists(CACHE):
         with open(CACHE, 'wb') as f:
-            pickle.dump((dataset, files), f, protocol=pickle.HIGHEST_PROTOCOL)
+            pickle.dump((dataset, files, max_seg_size), f, protocol=pickle.HIGHEST_PROTOCOL)
         print("==> Saved to cache")
+    print("==> detected max_seg_size {}".format(max_seg_size))
 
 
-    return dataset, files
+    return dataset, files, max_seg_size
 
 
 '''                 DATASETS                      '''
@@ -507,7 +555,7 @@ class preaspiration_dataset(Dataset):
 
 class general_dataset(Dataset):
     def __init__(self, dataset_path, suffix):
-        self.data, self.files = load_txtdata(dataset_path, suffix)
+        self.data, self.files, self.max_seg_size = load_txtdata(dataset_path, suffix)
         self.input_size = self.data[0][0].size(1)
 
     def __len__(self):
@@ -528,8 +576,8 @@ class timit_dataset(Dataset):
         return self.data[item]
 
 class toy_dataset(Dataset):
-    def __init__(self, dataset_size, seq_len):
-        self.data = create_simple_dataset(dataset_size, seq_len)
+    def __init__(self, dataset_size, seq_len, k):
+        self.data, self.max_seg_size = create_simple_dataset(dataset_size, seq_len, k)
         self.input_size = self.data[0][0].size(1)
 
     def __len__(self):

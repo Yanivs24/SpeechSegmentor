@@ -6,3 +6,6 @@ data/*
 !data/.gitkeep
 .ftpconfig
 runs/
+ckpt/
+experiments/*
+experiemtns_stash/*

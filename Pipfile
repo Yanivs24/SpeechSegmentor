@@ -1,0 +1,20 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+"5e66aad" = {file = "http://download.pytorch.org/whl/cu80/torch-0.3.1-cp36-cp36m-linux_x86_64.whl"}
+numpy = "*"
+pandas = "*"
+tqdm = "*"
+tensorboardx = "*"
+"h5py" = "*"
+librosa = "*"
+soundfile = "*"
+pipfile = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.6"

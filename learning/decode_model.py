@@ -8,11 +8,11 @@ import torch
 
 from model.model import SpeechSegmentor
 from train_model import convert_to_batches
-
+from tqdm import tqdm
 sys.path.append('./back_end')
 from data_handler import (preaspiration_dataset,
                           switchboard_dataset_after_embeddings, timit_dataset,
-                          toy_dataset)
+                          toy_dataset, general_dataset)
 
 def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
@@ -21,7 +21,7 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
     # Convert data to torch batches and loop over them
     batches = convert_to_batches(dataset, batch_size, is_cuda, use_k)
-    for batch, lengths, segmentations in batches:
+    for batch, lengths, segmentations in tqdm(batches):
 
         # k Value to be sent to the model
         real_k = len(segmentations[0]) if use_k else None
@@ -31,8 +31,8 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
 
         # Loop over the predictions of the batch
         for pred, gold in zip(preds, segmentations):
-            print 'Predicted:', pred
-            print 'Gold:', gold
+            print('Predicted:', pred)
+            print('Gold:', gold)
 
             # If k is unknown, we expect to get the same size
             if use_k and len(pred) != len(gold):
@@ -47,20 +47,22 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
     # Fixed k
     if use_k:
         if dataset_name == 'pa':
-            eval_performance_pa(labels, predictions)
+            eval_performance_general(labels, predictions)
         elif dataset_name == 'timit':
             eval_performance_timit(labels, predictions, use_k=True)
+        elif dataset_name == 'word' or dataset_name == 'vot' or dataset_name == 'vowel':
+            eval_performance_general(labels, predictions)
         else:
-            print 'Performance evaluating with fixed K is not supported for %s' % dataset_name
+            print('Performance evaluating with fixed K is not supported for %s' % dataset_name)
     # k is not fixed
     else:
         if dataset_name == 'timit':
             eval_performance_timit(labels, predictions, use_k=False)
         else:
-            print 'Performance evaluating with unknown K is supported for %s' % dataset_name
+            print('Performance evaluating with unknown K is supported for %s' % dataset_name)
 
-def eval_performance_pa(labels, predictions):
-    ''' Evaluate performence for the preaspiration task '''
+def eval_performance_general(labels, predictions):
+    ''' Evaluate performence for a general event of one segment (|y|=2) '''
 
     gold_durations = []
     pred_durations = []
@@ -73,29 +75,29 @@ def eval_performance_pa(labels, predictions):
         pred_durations.append(pred[1]-pred[0])
         # not found
         if pred[1] <= pred[0]:
-             print 'Warning - bad prediction: %s' % str(pred)
+             print('Warning - bad prediction: %s' % str(pred))
 
         left_err += np.abs(gold[0]-pred[0])
         right_err += np.abs(gold[1]-pred[1])
 
-    print 'left_err: ',  float(left_err)/len(labels)
-    print 'right_err: ', float(right_err)/len(labels)
+    print('left_err: ',  float(left_err)/len(labels))
+    print('right_err: ', float(right_err)/len(labels))
 
     Y     = np.array(gold_durations)
     Y_tag = np.array(pred_durations)
 
-    print "Mean of labeled/predicted preaspiration: %sms, %sms" % (str(np.mean(Y)), str(np.mean(Y_tag)))
-    print "Standard deviation of labeled/predicted preaspiration: %sms, %sms" % (str(np.std(Y)), str(np.std(Y_tag)))
-    print "max of labeled/predicted preaspiration: %sms, %sms" % (str(np.max(Y)), str(np.max(Y_tag)))
-    print "min of labeled/predicted preaspiration: %sms, %sms" % (str(np.min(Y)), str(np.min(Y_tag)))
+    print("Mean of labeled/predicted event: %sms, %sms" % (str(np.mean(Y)), str(np.mean(Y_tag))))
+    print("Standard deviation of labeled/predicted event: %sms, %sms" % (str(np.std(Y)), str(np.std(Y_tag))))
+    print("max of labeled/predicted event: %sms, %sms" % (str(np.max(Y)), str(np.max(Y_tag))))
+    print("min of labeled/predicted event: %sms, %sms" % (str(np.min(Y)), str(np.min(Y_tag))))
 
     thresholds = [2, 5, 10, 15, 20, 25, 50]
-    print "Percentage of examples with labeled/predicted difference of at most:"
-    print "------------------------------"
+    print("Percentage of examples with labeled/predicted difference of at most:")
+    print("------------------------------")
     for thresh in thresholds:
-        print "%d msec: " % thresh, 100*(len(Y[abs(Y-Y_tag)<thresh])/float(len(Y)))
+        print("%d msec: " % thresh, 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y))))
 
-def eval_performance_timit(labels, predictions, use_k):
+def eval_performance_timit(labels, predictions, use_k, conservative_matching=False):
     ''' Evaluate performence for the timit task '''
 
     # Here each index is 10ms wide
@@ -111,24 +113,25 @@ def eval_performance_timit(labels, predictions, use_k):
 
         pred, gold = np.array(pred), np.array(gold)
 
-        # More conservative matching algorithm (each boundary is used once)
-        # for i,y_hat in enumerate(pred):
-        #     # Find all golds within a 20ms window of the found boundary
-        #     golds_in_win = gold[np.abs(gold-y_hat)<=2]
-        #     # Miss - go to the next boundary
-        #     if len(golds_in_win) == 0:
-        #         continue
+        # More conservative matching algorithm (each gold boundary is used once)
+        if conservative_matching:
+            for i,y_hat in enumerate(pred):
+                # Find all golds within a 20ms window of the found boundary
+                golds_in_win = gold[np.abs(gold-y_hat)<=2]
+                # Miss - go to the next boundary
+                if len(golds_in_win) == 0:
+                    continue
 
-        #     # Hit
-        #     precisions[2] += 1
-        #     recalls[2] +=1
+                # Hit
+                precisions[2] += 1
+                recalls[2] +=1
 
-        #     # Find the closest hit
-        #     closest = golds_in_win[np.abs(golds_in_win-y_hat).argmin()]
+                # Find the closest hit
+                closest = golds_in_win[np.abs(golds_in_win-y_hat).argmin()]
 
-        #     # Remove our match from the golds, because we don't want to
-        #     # use it again
-        #     gold[gold==closest] = -100
+                # Remove our match from the golds, because we don't want to
+                # use it again
+                gold[gold==closest] = -100
 
         # Count for precision
         for y_hat in pred:
@@ -145,19 +148,19 @@ def eval_performance_timit(labels, predictions, use_k):
 
     # Compare element-wise, relevant only if k is fixed
     if use_k:
-        print "Percentage of examples with labeled/predicted difference of at most:"
-        print "------------------------------"
+        print("Percentage of examples with labeled/predicted difference of at most:")
+        print("------------------------------")
         # Here each index is 10ms wide
         for thresh in thresholds:
-            print "%d msec: " % (thresh*10), 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y)))
+            print("%d msec: " % (thresh*10), 100*(len(Y[abs(Y-Y_tag)<=thresh])/float(len(Y))))
 
     precisions = precisions / float(len(Y_tag))
     recalls    = recalls / float(len(Y))
-    print "Proportion of labeled/predicted precision and recall of at most 10ms,20ms,30ms,40ms:"
-    print "------------------------------"
-    print "Precision: ", precisions
-    print "Recall: ", recalls
-    print "F1 score: ", 2*precisions*recalls / (precisions+recalls)
+    print("Proportion of labeled/predicted precision and recall of at most 10ms,20ms,30ms,40ms:")
+    print("------------------------------")
+    print("Precision: ", precisions)
+    print("Recall: ", recalls)
+    print("F1 score: ", 2*precisions*recalls / (precisions+recalls))
 
 if __name__ == '__main__':
 
@@ -171,35 +174,50 @@ if __name__ == '__main__':
     parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
     parser.add_argument('--use_k', help='Apply inference when k (# of segments) is known for each example', action='store_true', default=False)
     parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
+    parser.add_argument('--rnn_output_dim', default=80, type=int)
+    parser.add_argument('--sum_mlp_hid_dim', default=100, type=int)
+    parser.add_argument('--output_mlp_hid_dim', default=100, type=int)
+
     args = parser.parse_args()
 
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
 
     if args.is_cuda:
-        print '==> Decoding on GPU using cuda'
+        print('==> Decoding on GPU using cuda')
     else:
-        print '==> Decoding on CPU'
+        print('==> Decoding on CPU')
 
     if args.dataset == 'sb':
-        print '==> Decoding preprocessed switchboard testset '
+        print('==> Decoding preprocessed switchboard testset ')
         dataset = switchboard_dataset_after_embeddings(dataset_path=args.decode_path,
                                                        hop_size=0.5) # hop_size should be the same as used
                                                                      # in get_embeddings.sh
     elif args.dataset == 'pa':
-        print '==> Decoding preaspiration testset'
+        print('==> Decoding preaspiration testset')
         dataset = preaspiration_dataset(args.decode_path)
     # Synthetic simple dataset for debugging
     elif args.dataset == 'toy':
-        print '==> Decoding toy testset'
+        print('==> Decoding toy testset')
         dataset = toy_dataset(dataset_size=1000, seq_len=100)
     elif args.dataset == 'timit':
-        print '==> Using timit dataset'
+        print('==> Using timit dataset')
         dataset = timit_dataset(args.decode_path)
+    elif args.dataset == 'vot' or args.dataset == 'word':
+        print('==> Using %s dataset' % args.dataset)
+        dataset = general_dataset(args.decode_path, '.txt')
+        args.max_segment_size = dataset.max_seg_size
+    elif args.dataset == 'vowel':
+        print('==> Using Vowel dataset')
+        dataset = general_dataset(args.decode_path, '.data')
+        args.max_segment_size = dataset.max_seg_size
     else:
         raise ValueError("%s - illegal dataset" % args.dataset)
 
     # Construct a model with the pre-trained parameters
     model = SpeechSegmentor(rnn_input_dim=dataset.input_size,
+                            rnn_output_dim=args.rnn_output_dim,
+                            sum_mlp_hid_dims=(args.sum_mlp_hid_dim, args.sum_mlp_hid_dim),
+                            output_mlp_hid_dim=args.output_mlp_hid_dim,
                             load_from_file=args.params_path,
                             is_cuda=args.is_cuda,
                             max_segment_size=args.max_segment_size)
