@@ -27,7 +27,7 @@ def decode_data(model, dataset_name, dataset, batch_size, is_cuda, use_k):
         real_k = len(segmentations[0]) if use_k else None
 
         # Predict using the model
-        preds, _ = model(batch, lengths, real_k)
+        preds, _, _ = model(batch, lengths, real_k)
 
         # Loop over the predictions of the batch
         for pred, gold in zip(preds, segmentations):

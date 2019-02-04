@@ -1,3 +1,4 @@
+import os
 import time
 import torch
 import torch.nn as nn
@@ -69,6 +70,10 @@ class SpeechSegmentor(nn.Module):
         else:
             # This is due the segmental RNN concatenation in phi
             self.mlp_output1 = nn.Linear(6 * rnn_output_dim, output_mlp_hid_dim)
+
+        #----------------
+        self.regressor = nn.Sequential(nn.ReLU(), nn.Linear(2*rnn_output_dim, rnn_input_dim))
+        #----------------
 
         # We return a scalar score
         self.mlp_output2 = nn.Linear(output_mlp_hid_dim, 1)
@@ -370,6 +375,10 @@ class SpeechSegmentor(nn.Module):
             self.calc_all_rnns(batch)
         print("calc_all_rnns: %s seconds ---" % (time.time() - start_time))
 
+        #----------------
+        reg_out = self.regressor(self.BiRNN_vals)
+        #----------------
+
         batch_size = batch.size(0)
         max_length = batch.size(1)
 
@@ -412,7 +421,7 @@ class SpeechSegmentor(nn.Module):
                 task_loss = task_loss.cuda()
             final_scores += self.task_loss_coef * task_loss
 
-        return pred_seg, final_scores
+        return pred_seg, final_scores, reg_out
 
     def exact_inference(self, local_scores, lengths, k, gold_labels=None):
         '''
@@ -605,6 +614,7 @@ class SpeechSegmentor(nn.Module):
         return pred_seg
 
     def store_params(self, fpath):
+        os.makedirs('/'.join(fpath.split('/')[:-1]), exist_ok=True)
         torch.save(self.state_dict(), fpath)
 
     def load_params(self, fpath):

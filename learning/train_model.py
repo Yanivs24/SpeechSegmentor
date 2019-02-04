@@ -90,7 +90,7 @@ def convert_to_batches(data, batch_size, is_cuda, fixed_k):
     return batches
 
 def train_model(model, train_data, dev_data, learning_rate, batch_size, iterations,
-                is_cuda, patience, use_k, use_taskloss, params_file, grad_clip, optimizer):
+                is_cuda, patience, use_k, use_taskloss, params_file, grad_clip, optimizer, reg_loss_freq):
     '''
     Train the network
     '''
@@ -119,7 +119,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
     for ITER in range(iterations):
         print('-------- Epoch #%d --------' % (ITER+1))
 
-        random.shuffle(train_batches)
+        # random.shuffle(train_batches)
         model.train()
 
         # Run train epochs
@@ -135,7 +135,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
             # Forward pass on the network
             start_time = time.time()
-            pred_segmentations, pred_scores = model(batch,
+            pred_segmentations, pred_scores, reg_out = model(batch,
                                                     lengths,
                                                     k=real_k,
                                                     gold_seg=segmentations)
@@ -154,8 +154,17 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             else:
                 batch_loss = nn.ReLU()(1 + pred_scores - gold_scores)
 
-            loss = torch.mean(batch_loss)
-            print("The avg loss is %s" % str(loss))
+            loss = 0
+            if reg_loss_freq > 0:
+                if batch_idx % reg_loss_freq == 0:
+                    loss += torch.mean(batch_loss)
+                    print("The avg loss is %s" % str(loss))
+                reg_loss = nn.functional.mse_loss(reg_out[:,:-1,:], batch[:,1:,:])
+                loss += reg_loss
+                print("The reg loss is %s" % str(reg_loss))
+            else:
+                loss += torch.mean(batch_loss)
+                print("The avg loss is %s" % str(loss))
 
             if float(loss) < 0:
                 raise Exception()
@@ -174,6 +183,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
                 nn.utils.clip_grad_norm(model.parameters(), grad_clip)
             optimizer.step()
             print("Backwards: %s seconds ---" % (time.time() - start_time))
+            sys.stdout.flush()
 
         # Evaluation mode
         model.eval()
@@ -194,7 +204,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             real_k = len(segmentations[0]) if use_k else None
 
             # Forward pass on the network
-            pred_segmentations, pred_scores = model(batch,
+            pred_segmentations, pred_scores, _ = model(batch,
                                                     lengths,
                                                     k=real_k)
 
@@ -285,6 +295,7 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
 
         # also save best model according to f1
         params_file_f1 = params_file.replace('.model', '_f1.model')
+        print("==> best f1: {}, current f1: {}".format(best_dev_f1, dev_f1))
         if dev_f1 > best_dev_f1:
             best_dev_f1 = dev_f1
             print('Best F1 so far - storing parameters in %s' % params_file_f1)
@@ -295,10 +306,15 @@ def train_model(model, train_data, dev_data, learning_rate, batch_size, iteratio
             return epoch_metrics
 
     print('Tranining process has finished!')
+    sys.stdout.flush()
     return epoch_metrics
 
 
 def main(args):
+    # redirect output
+    if args.output_file is not None:
+        sys.stdout = open(args.output_file, "w")
+
     print("==> running {}".format(args))
     args.is_cuda = args.use_cuda and torch.cuda.is_available()
 
@@ -394,7 +410,8 @@ def main(args):
                        use_taskloss=args.use_task_loss,
                        params_file=args.params_path,
                        grad_clip=args.grad_clip,
-                       optimizer=args.optimizer)
+                       optimizer=args.optimizer,
+                       reg_loss_freq=args.reg_loss_freq)
 
 
 if __name__ == '__main__':
@@ -405,7 +422,7 @@ if __name__ == '__main__':
     parser.add_argument("--val_path", help="A path to the training set", default=None)
     parser.add_argument("--dataset", help="Which dataset to use: sb(switchboard)/pa/toy/timit/vot/word/vowel", default='sb')
     parser.add_argument('--learning_rate', help='The learning rate', default=0.0001, type=float)
-    parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=5000, type=int)
+    parser.add_argument('--num_iters', help='Number of iterations (epochs)', default=10, type=int)
     parser.add_argument('--batch_size', help='Size of training batch', default=20, type=int)
     parser.add_argument('--patience', help='Num of consecutive epochs to trigger early stopping', default=5, type=int)
     parser.add_argument('--use_cuda',  help='disables training with CUDA (GPU)', action='store_true', default=False)
@@ -415,9 +432,11 @@ if __name__ == '__main__':
     parser.add_argument('--task_loss_coef', help='Task loss coefficient', default=0.0001, type=float)
     parser.add_argument('--grad_clip', help='gradient clipping', default=None, type=float)
     parser.add_argument('--optimizer', help='optimizer', default="adam")
+    parser.add_argument('--output_file', default=None)
     parser.add_argument('--rnn_output_dim', default=80, type=int)
     parser.add_argument('--sum_mlp_hid_dim', default=100, type=int)
     parser.add_argument('--output_mlp_hid_dim', default=100, type=int)
+    parser.add_argument('--reg_loss_freq', default=1, type=int)
     parser.add_argument('--max_segment_size', help='Max searched segment size (in indexes)', default=52, type=int)
     parser.add_argument('--init_lstm_params', help='Load pretrained LSTM weights and used them as a fixed embedding layer', default='')
     args = parser.parse_args()
