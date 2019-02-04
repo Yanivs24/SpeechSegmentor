@@ -501,7 +501,6 @@ class SpeechSegmentor(nn.Module):
 
         print("ground truth:", gold_labels)
         print("yhat:", onsets)
-        print("seq len", local_scores.shape[1])
         return onsets
 
     def exact_inference_exhaustive(self, local_scores, lengths, k, gold_labels=None):
